@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Licznik odwiedzin | trawiasta.pl</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0a0c0a">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;800&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #0a0c0a; --accent: #3dff7a; --accent2: #b8ff3d; --text: #e8f5e9; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'Outfit', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    overflow: hidden; position: relative;
+  }
+  body::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(ellipse at 20% 80%, rgba(61, 255, 122, 0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, rgba(184, 255, 61, 0.06) 0%, transparent 50%);
+  }
+  .container { text-align: center; z-index: 2; padding: 2rem; max-width: 760px; }
+  .logo-wrap { display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 2rem; }
+  .grass { width: 2rem; height: 2rem; filter: drop-shadow(0 0 8px rgba(61, 255, 122, 0.4)); }
+  .brand {
+    font-size: 1.6rem; font-weight: 800; letter-spacing: -0.04em;
+    background: linear-gradient(135deg, #ffffff 0%, var(--accent) 50%, var(--accent2) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .status {
+    display: inline-block; background: rgba(61, 255, 122, 0.1); border: 1px solid rgba(61, 255, 122, 0.3);
+    color: var(--accent); padding: 0.4rem 1rem; border-radius: 999px; font-size: 0.85rem; font-weight: 500;
+    letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 1.2rem;
+  }
+  .count {
+    font-size: clamp(4.5rem, 20vw, 10rem); font-weight: 800; letter-spacing: -0.04em; line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(135deg, #ffffff 0%, var(--accent) 50%, var(--accent2) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    filter: drop-shadow(0 0 30px rgba(61, 255, 122, 0.25));
+    min-height: 1.05em;
+  }
+  .count.loading { animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+  .label { font-size: clamp(1.1rem, 3vw, 1.5rem); font-weight: 300; opacity: 0.85; letter-spacing: 0.05em; margin: 0.6rem 0 2.5rem; }
+  .error { color: #ffd27a; font-weight: 300; margin: 0.6rem 0 2.5rem; font-size: 1.1rem; }
+  .btn {
+    display: inline-block; text-decoration: none;
+    background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #0a0c0a;
+    padding: 1rem 2.2rem; font-size: 1.05rem; font-weight: 600; border-radius: 999px;
+    transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 0 30px rgba(61, 255, 122, 0.3);
+  }
+  .btn:hover { transform: translateY(-2px); box-shadow: 0 0 40px rgba(61, 255, 122, 0.5); }
+  .btn:active { transform: translateY(0); }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="logo-wrap">
+    <svg class="grass" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M32 58V28" stroke="#3dff7a" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M32 42C26 36 20 28 18 16" stroke="#3dff7a" stroke-width="2" stroke-linecap="round"/>
+      <path d="M32 42C38 36 44 28 46 16" stroke="#b8ff3d" stroke-width="2" stroke-linecap="round"/>
+      <path d="M32 36C28 32 24 26 22 18" stroke="#7dffb3" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M32 36C36 32 40 26 42 18" stroke="#d4ff4a" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M32 48C29 44 25 40 22 34" stroke="#3dff7a" stroke-width="1.5" stroke-linecap="round"/>
+      <path d="M32 48C35 44 39 40 42 34" stroke="#b8ff3d" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    <div class="brand">trawiasta.pl</div>
+  </div>
+  <div class="status">Licznik odwiedzin</div>
+  <div class="count loading" id="count" aria-live="polite">…</div>
+  <div class="label" id="label">łączna liczba odwiedzin strony głównej</div>
+  <a class="btn" href="/">wróć na stronę główną</a>
+</div>
+<script>
+(function () {
+  var el = document.getElementById('count');
+  var label = document.getElementById('label');
+  var fmt = new Intl.NumberFormat('pl-PL');
+
+  function animateTo(target) {
+    el.classList.remove('loading');
+    var duration = Math.min(2000, 600 + target * 4);
+    var start = null;
+    function step(ts) {
+      if (start === null) start = ts;
+      var t = Math.min(1, (ts - start) / duration);
+      var eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = fmt.format(Math.round(target * eased));
+      if (t < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  function fail() {
+    el.classList.remove('loading');
+    el.textContent = '🌱';
+    label.className = 'error';
+    label.textContent = 'Ups, nie udało się teraz pobrać licznika. Spróbuj odświeżyć stronę za chwilę.';
+  }
+
+  // tylko odczyt – ta strona NIE zwiększa licznika
+  var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 8000);
+  fetch('https://abacus.jasoncameron.dev/get/trawiasta-pl/odwiedziny', { cache: 'no-store', signal: ctrl ? ctrl.signal : undefined })
+    .then(function (r) {
+      if (r.status === 404) return { value: 0 };
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function (d) {
+      clearTimeout(timer);
+      var v = Number(d && d.value);
+      if (!isFinite(v) || v < 0) throw new Error('bad value');
+      animateTo(v);
+    })
+    .catch(function () { clearTimeout(timer); fail(); });
+})();
+</script>
+</body>
+</html>

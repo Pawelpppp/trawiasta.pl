@@ -244,5 +244,14 @@ document.getElementById('launch').addEventListener('click', () => {
 
 animate();
 </script>
+<script>
+// licznik odwiedzin (wynik widoczny tylko na /licznik); błędy ignorowane
+(function () {
+  try {
+    fetch('https://abacus.jasoncameron.dev/hit/trawiasta-pl/odwiedziny', { mode: 'cors', cache: 'no-store', keepalive: true })
+      .catch(function () {});
+  } catch (e) {}
+})();
+</script>
 </body>
 </html>
