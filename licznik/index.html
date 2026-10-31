@@ -272,7 +272,7 @@
       msg.hidden = true;
       document.getElementById('table-wrap').hidden = false;
       document.getElementById('visits-meta').textContent =
-        'Pokazano ' + rows.length + ' ostatnich wpisów (najnowsze na górze). Czas: Polska (Europe/Warsaw).';
+        'Liczba wpisów: ' + rows.length + ' (najnowsze na górze, maks. ' + MAX_ROWS + '). Czas: Polska (Europe/Warsaw).';
       render(rows);
     });
   }
