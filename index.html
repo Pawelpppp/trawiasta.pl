@@ -141,6 +141,15 @@
     opacity: 0.4;
     z-index: 2;
   }
+  .footer .privacy {
+    display: block;
+    margin: 0.35rem auto 0;
+    padding: 0 1rem;
+    max-width: 560px;
+    font-size: 0.68rem;
+    font-weight: 300;
+    line-height: 1.4;
+  }
 </style>
 </head>
 <body>
@@ -164,7 +173,7 @@
   <button id="launch">odpal fajerwerki</button>
 </div>
 
-<div class="footer">trawiasta.pl</div>
+<div class="footer">trawiasta.pl<span class="privacy">Ta strona zapisuje statystyki odwiedzin: adres IP, przybliżoną lokalizację (miasto, region, kraj) oraz typ urządzenia, przeglądarkę i system.</span></div>
 
 <script>
 const canvas = document.getElementById('fireworks');
@@ -245,11 +254,84 @@ document.getElementById('launch').addEventListener('click', () => {
 animate();
 </script>
 <script>
-// licznik odwiedzin (wynik widoczny tylko na /licznik); błędy ignorowane
+// Licznik + log odwiedzin (podgląd na /licznik). Wszystko asynchronicznie, błędy ignorowane.
 (function () {
   try {
-    fetch('https://abacus.jasoncameron.dev/hit/trawiasta-pl/odwiedziny', { mode: 'cors', cache: 'no-store', keepalive: true })
-      .catch(function () {});
+    var KV = 'https://keyvalue.immanuel.co/api/KeyVal';
+    var KV_APP = 'dqr9pmjx';
+    function getJSON(url, ms) {
+      var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      var t = setTimeout(function () { if (ctrl) ctrl.abort(); }, ms || 5000);
+      return fetch(url, { cache: 'no-store', signal: ctrl ? ctrl.signal : undefined })
+        .then(function (r) { clearTimeout(t); if (!r.ok) throw new Error(r.status); return r.json(); });
+    }
+    function geo() {
+      return getJSON('https://get.geojs.io/v1/ip/geo.json')
+        .then(function (d) { return { ip: d.ip, city: d.city, region: d.region, cc: d.country_code }; })
+        .catch(function () {
+          return getJSON('https://ipwho.is/').then(function (d) {
+            return { ip: d.ip, city: d.city, region: d.region, cc: d.country_code };
+          });
+        })
+        .catch(function () { return {}; });
+    }
+    function device(ua) {
+      if (/bot|crawl|spider|slurp|facebookexternalhit|headless|preview|lighthouse/i.test(ua)) return 'b';
+      if (/iPad|Tablet|PlayBook|Silk/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua)) ||
+          (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1)) return 't';
+      if ((navigator.userAgentData && navigator.userAgentData.mobile) || /Mobi|iPhone|iPod|Android|Windows Phone/i.test(ua)) return 'p';
+      return 'k';
+    }
+    function browser(ua) {
+      var m, list = [
+        [/Edg(?:e|A|iOS)?\/(\d+)/, 'Edge'], [/OPR\/(\d+)/, 'Opera'], [/SamsungBrowser\/(\d+)/, 'Samsung Internet'],
+        [/YaBrowser\/(\d+)/, 'Yandex'], [/FxiOS\/(\d+)/, 'Firefox'], [/Firefox\/(\d+)/, 'Firefox'],
+        [/CriOS\/(\d+)/, 'Chrome'], [/HeadlessChrome\/(\d+)/, 'Headless Chrome'], [/Chrome\/(\d+)/, 'Chrome'],
+        [/Version\/(\d+).*Safari/, 'Safari']
+      ];
+      for (var i = 0; i < list.length; i++) if ((m = ua.match(list[i][0]))) return list[i][1] + ' ' + m[1];
+      return 'inna';
+    }
+    function os(ua) {
+      var m;
+      if ((m = ua.match(/(?:iPhone|CPU) OS (\d+)/))) return 'iOS ' + m[1];
+      if (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'iPadOS';
+      if ((m = ua.match(/Android (\d+)/))) return 'Android ' + m[1];
+      if (/Windows NT 10/.test(ua)) return 'Windows 10/11';
+      if ((m = ua.match(/Windows NT ([\d.]+)/))) return 'Windows NT ' + m[1];
+      if (/CrOS/.test(ua)) return 'ChromeOS';
+      if (/Mac OS X/.test(ua)) return 'macOS';
+      if (/Linux/.test(ua)) return 'Linux';
+      return 'inny';
+    }
+    function b64url(str) {
+      var bytes = new TextEncoder().encode(str), bin = '';
+      for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+    function cut(v, n) { return String(v || '').slice(0, n); }
+
+    var ua = navigator.userAgent || '';
+    var hit = getJSON('https://abacus.jasoncameron.dev/hit/trawiasta-pl/odwiedziny', 6000);
+    Promise.all([hit, geo()]).then(function (res) {
+      var n = res[0] && res[0].value, g = res[1] || {};
+      if (!n) return;
+      var row = [Math.floor(Date.now() / 1000), cut(g.ip, 45), cut(g.city, 30), cut(g.region, 30), cut(g.cc, 2),
+                 device(ua), cut(browser(ua), 24), cut(os(ua), 16)];
+      var enc = b64url(JSON.stringify(row));
+      if (enc.length > 200) { row[3] = ''; enc = b64url(JSON.stringify(row)); }
+      if (enc.length > 200) { row[2] = cut(row[2], 12); enc = b64url(JSON.stringify(row)); }
+      if (enc.length > 200) return;
+      var url = KV + '/UpdateValue/' + KV_APP + '/v' + n + '/' + enc;
+      function save(attempt) {
+        return fetch(url, { method: 'POST', keepalive: true }).then(function (r) {
+          if (!r.ok) throw new Error(r.status);
+        }).catch(function () {
+          if (attempt < 3) return new Promise(function (ok) { setTimeout(ok, 700 * (attempt + 1)); }).then(function () { return save(attempt + 1); });
+        });
+      }
+      return save(0);
+    }).catch(function () {});
   } catch (e) {}
 })();
 </script>

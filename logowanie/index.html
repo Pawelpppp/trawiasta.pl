@@ -169,11 +169,20 @@
   login.addEventListener('input', clearError);
   pass.addEventListener('input', clearError);
 
+  // dokąd wrócić po zalogowaniu (?next=/licznik/) – tylko ścieżki w obrębie tej strony
+  function safeNext() {
+    try {
+      var n = new URLSearchParams(window.location.search).get('next');
+      if (n && /^\/(?!\/)[^\\\s]*$/.test(n)) return n;
+    } catch (err) {}
+    return '/';
+  }
+
   form.addEventListener('submit', function (e) {
     e.preventDefault();
     if (login.value.trim() === 'admin' && pass.value === 'admin') {
       try { sessionStorage.setItem('trawiasta_zalogowany', '1'); } catch (err) {}
-      window.location.href = '/';
+      window.location.href = safeNext();
       return;
     }
     error.textContent = 'Nieprawidłowy login lub hasło.';
