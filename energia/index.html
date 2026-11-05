@@ -820,20 +820,16 @@ function applyReading(r) {
   document.getElementById('lastUpdate').textContent = formatWarsaw(new Date(r.at));
   document.getElementById('warsawNow').textContent = formatWarsaw(new Date());
 
-  // solar + grid - battery = load  (battery>0 charge, grid>0 import)
   const batLabel = r.battery >= 0
     ? `mag. ład. ${r.battery} W`
     : `mag. rozład. ${-r.battery} W`;
   const gridLabel = r.grid >= 0
     ? `sieć import ${r.grid} W`
     : `sieć eksport ${-r.grid} W`;
-  const bal = `PV ${r.solar} W + ${gridLabel} ${r.battery >= 0 ? '−' : '+'} ${batLabel.replace(/^mag\. (ład|rozład)\. /, '')} = dom ${r.load} W`;
-  // clearer human form:
-  const balHuman = `PV ${r.solar} W + ${gridLabel} + ${r.battery < 0 ? `mag. rozład. ${-r.battery}` : `mag. ład. (−)${r.battery}`} W → suma źródeł pokrywa dom ${r.load} W`;
   const left = r.solar + Math.max(r.grid, 0) + Math.max(-r.battery, 0);
   const right = r.load + Math.max(-r.grid, 0) + Math.max(r.battery, 0);
   document.getElementById('balanceLine').innerHTML =
-    `Bilans energii: <code>źródła ${left} W = ujścia ${right} W</code> · PV ${r.solar} W, dom ${r.load} W, ${gridLabel}, ${batLabel}`;
+    `Bilans energii: <code>źródła ${left} W = ujścia ${right} W</code> · PV ${r.solar} W, dom ${r.load} W, ${gridLabel}, ${batLabel}`
 
   try {
     localStorage.setItem(STATE_KEY, JSON.stringify({ soc: r.batterySoc, at: r.at }));
