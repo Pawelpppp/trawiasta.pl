@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Przepływ energii PV | trawiasta.pl</title>
+<meta name="description" content="Demonstracyjna wizualizacja przepływu energii w instalacji fotowoltaicznej z falownikiem — panele PV, magazyn, dom i sieć. Dane losowane co 5 minut.">
+<link rel="canonical" href="https://trawiasta.pl/energia/">
+<meta name="theme-color" content="#0a0c0a">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="trawiasta.pl">
+<meta property="og:title" content="Przepływ energii PV | trawiasta.pl">
+<meta property="og:description" content="Animowany diagram przepływu energii w instalacji fotowoltaicznej z falownikiem. Dane demonstracyjne.">
+<meta property="og:url" content="https://trawiasta.pl/energia/">
+<meta property="og:image" content="https://trawiasta.pl/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="pl_PL">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Przepływ energii PV | trawiasta.pl">
+<meta name="twitter:description" content="Animowany diagram przepływu energii w instalacji fotowoltaicznej z falownikiem.">
+<meta name="twitter:image" content="https://trawiasta.pl/og-image.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c0a;
+    --accent: #3dff7a;
+    --accent2: #b8ff3d;
+    --text: #e8f5e9;
+    --muted: rgba(232, 245, 233, 0.65);
+    --card: rgba(255, 255, 255, 0.03);
+    --border: rgba(61, 255, 122, 0.18);
+    --solar: #fcd34d;
+    --home: #a78bfa;
+    --grid-in: #60a5fa;
+    --grid-out: #f472b6;
+    --bat-in: #4ade80;
+    --bat-out: #fb923c;
+    --inv: #38bdf8;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Outfit', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+    min-height: 100dvh;
+    position: relative;
+    overflow-x: hidden;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse at 15% 90%, rgba(61, 255, 122, 0.09) 0%, transparent 45%),
+      radial-gradient(ellipse at 85% 10%, rgba(184, 255, 61, 0.07) 0%, transparent 45%),
+      radial-gradient(ellipse at 50% 40%, rgba(56, 189, 248, 0.04) 0%, transparent 50%);
+    z-index: 0;
+  }
+  .wrap {
+    position: relative;
+    z-index: 1;
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 1.25rem 1rem 3rem;
+  }
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.85rem;
+    margin-bottom: 1.25rem;
+  }
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-decoration: none;
+    color: inherit;
+  }
+  .grass {
+    width: 1.85rem;
+    height: 1.85rem;
+    filter: drop-shadow(0 0 8px rgba(61, 255, 122, 0.4));
+  }
+  .brand-name {
+    font-weight: 800;
+    font-size: 1.35rem;
+    letter-spacing: -0.03em;
+    background: linear-gradient(135deg, #fff 0%, var(--accent) 55%, var(--accent2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .nav-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    align-items: center;
+  }
+  .nav-links a, .btn {
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--accent);
+    text-decoration: none;
+    border: 1px solid var(--border);
+    background: rgba(61, 255, 122, 0.06);
+    padding: 0.45rem 0.9rem;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, transform 0.15s;
+  }
+  .nav-links a:hover, .btn:hover {
+    background: rgba(61, 255, 122, 0.14);
+    border-color: rgba(61, 255, 122, 0.4);
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #0a0c0a;
+    border: none;
+    font-weight: 700;
+    box-shadow: 0 0 24px rgba(61, 255, 122, 0.25);
+  }
+  .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0 32px rgba(61, 255, 122, 0.4);
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+  }
+  .btn:focus-visible, .nav-links a:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+  }
+  .hero {
+    margin-bottom: 1.25rem;
+  }
+  .hero h1 {
+    font-size: clamp(1.55rem, 4.5vw, 2.35rem);
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    line-height: 1.15;
+    margin-bottom: 0.4rem;
+  }
+  .hero p {
+    color: var(--muted);
+    font-weight: 300;
+    max-width: 52ch;
+    line-height: 1.45;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #0a0c0a;
+    background: linear-gradient(135deg, var(--accent2), var(--accent));
+    padding: 0.28rem 0.7rem;
+    border-radius: 999px;
+    margin-bottom: 0.7rem;
+  }
+  .meta-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem 1.1rem;
+    align-items: center;
+    margin: 1rem 0 1.35rem;
+    font-size: 0.92rem;
+    color: var(--muted);
+  }
+  .meta-bar strong { color: var(--text); font-weight: 700; }
+  .dot-live {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.55; transform: scale(0.85); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .dot-live { animation: none; }
+  }
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+  }
+  @media (min-width: 640px) {
+    .kpi-grid { grid-template-columns: repeat(4, 1fr); }
+  }
+  .kpi {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 1.1rem;
+    padding: 0.95rem 1rem;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  .kpi .label {
+    font-size: 0.78rem;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.35rem;
+  }
+  .kpi .value {
+    font-size: clamp(1.25rem, 3.5vw, 1.65rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+  }
+  .kpi .sub {
+    margin-top: 0.25rem;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+  .kpi.solar .value { color: var(--solar); }
+  .kpi.home .value { color: var(--home); }
+  .kpi.bat .value { color: var(--bat-in); }
+  .kpi.grid .value { color: var(--grid-in); }
+  .kpi.grid.export .value { color: var(--grid-out); }
+  .layout {
+    display: grid;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  @media (min-width: 900px) {
+    .layout {
+      grid-template-columns: 1.35fr 1fr;
+      align-items: start;
+    }
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 1.35rem;
+    padding: 1.1rem 1.15rem 1.25rem;
+    box-shadow: 0 0 50px rgba(61, 255, 122, 0.05), inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  .card h2 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin-bottom: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .card h2 .ico { font-size: 1.15rem; }
+  .flow-host {
+    width: 100%;
+    min-height: 340px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 1rem;
+    border: 1px solid rgba(61, 255, 122, 0.1);
+    overflow: hidden;
+    color: #d8e8d9;
+  }
+  power-flow, #pf-mount {
+    width: 100%;
+    max-width: 520px;
+    aspect-ratio: 1 / 0.95;
+    display: block;
+    margin: 0 auto;
+  }
+  .flow-note {
+    margin-top: 0.75rem;
+    font-size: 0.82rem;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+  .side-stack { display: grid; gap: 1rem; }
+  .inv-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.65rem;
+  }
+  .inv-item {
+    background: rgba(0,0,0,0.22);
+    border-radius: 0.85rem;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid rgba(56, 189, 248, 0.15);
+  }
+  .inv-item .k {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin-bottom: 0.2rem;
+  }
+  .inv-item .v {
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: var(--inv);
+  }
+  .inv-status {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin-bottom: 0.85rem;
+    font-size: 0.92rem;
+  }
+  .inv-status .pill {
+    background: rgba(61, 255, 122, 0.15);
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .inv-status .pill.warn {
+    background: rgba(251, 146, 60, 0.18);
+    color: var(--bat-out);
+  }
+  .inv-status .pill.off {
+    background: rgba(255,255,255,0.08);
+    color: var(--muted);
+  }
+  .stats-extra {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.65rem;
+    margin-top: 0.85rem;
+  }
+  @media (max-width: 520px) {
+    .stats-extra { grid-template-columns: 1fr; }
+    .inv-grid { grid-template-columns: 1fr; }
+  }
+  .stat-mini {
+    background: rgba(0,0,0,0.2);
+    border-radius: 0.85rem;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid var(--border);
+  }
+  .stat-mini .k { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+  .stat-mini .v { font-weight: 800; font-size: 1.15rem; margin-top: 0.15rem; }
+  .chart-wrap {
+    margin-top: 0.25rem;
+  }
+  #dayChart {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 0.75rem;
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.1rem;
+    margin-top: 0.65rem;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
+  .swatch {
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 2px;
+    display: inline-block;
+  }
+  .balance {
+    margin-top: 1rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+  }
+  .balance code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--accent2);
+    background: rgba(184, 255, 61, 0.08);
+    padding: 0.15rem 0.4rem;
+    border-radius: 0.35rem;
+    font-size: 0.8rem;
+  }
+  footer {
+    margin-top: 1.75rem;
+    text-align: center;
+    font-size: 0.82rem;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="/" aria-label="Strona główna trawiasta.pl">
+      <svg class="grass" viewBox="0 0 64 64" aria-hidden="true">
+        <path d="M32 58 V28" stroke="#3dff7a" stroke-width="3" stroke-linecap="round" fill="none"/>
+        <path d="M32 48 C22 38, 14 28, 10 14" stroke="#3dff7a" stroke-width="3" stroke-linecap="round" fill="none"/>
+        <path d="M32 48 C42 38, 50 28, 54 14" stroke="#b8ff3d" stroke-width="3" stroke-linecap="round" fill="none"/>
+        <path d="M32 42 C26 32, 22 24, 20 16" stroke="#6dff9a" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+        <path d="M32 42 C38 32, 42 24, 44 16" stroke="#9eff5a" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      </svg>
+      <span class="brand-name">trawiasta.pl</span>
+    </a>
+    <nav class="nav-links" aria-label="Nawigacja">
+      <a href="/">Strona główna</a>
+      <a href="/licznik/">Licznik</a>
+      <button type="button" class="btn btn-primary" id="btnReroll">Losuj teraz</button>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <div class="badge">Dane demonstracyjne</div>
+    <h1>Przepływ energii w instalacji PV</h1>
+    <p>
+      Animowany diagram instalacji fotowoltaicznej ~10&nbsp;kWp z falownikiem,
+      magazynem energii, domem i siecią. Wartości zależą od pory dnia w Warszawie
+      i losują się co 5&nbsp;minut.
+    </p>
+  </section>
+
+  <div class="meta-bar" aria-live="polite">
+    <span style="display:inline-flex;align-items:center;gap:0.4rem">
+      <span class="dot-live" aria-hidden="true"></span>
+      <span>Ostatnia aktualizacja: <strong id="lastUpdate">—</strong></span>
+    </span>
+    <span>Następna za: <strong id="countdown">5:00</strong></span>
+    <span>Czas lokalny (Warszawa): <strong id="warsawNow">—</strong></span>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi solar">
+      <div class="label">Moc PV (AC)</div>
+      <div class="value" id="kpiPv">—</div>
+      <div class="sub" id="kpiPvSub">po falowniku</div>
+    </div>
+    <div class="kpi home">
+      <div class="label">Zużycie domu</div>
+      <div class="value" id="kpiLoad">—</div>
+      <div class="sub" id="kpiLoadSub">chwilowe</div>
+    </div>
+    <div class="kpi bat">
+      <div class="label">Magazyn energii</div>
+      <div class="value" id="kpiBat">—</div>
+      <div class="sub" id="kpiBatSub">SOC —</div>
+    </div>
+    <div class="kpi grid" id="kpiGridCard">
+      <div class="label">Sieć</div>
+      <div class="value" id="kpiGrid">—</div>
+      <div class="sub" id="kpiGridSub">import / eksport</div>
+    </div>
+  </div>
+
+  <div class="layout">
+    <section class="card" aria-labelledby="flowTitle">
+      <h2 id="flowTitle"><span class="ico" aria-hidden="true">⚡</span> Diagram przepływu</h2>
+      <div class="flow-host">
+        <div id="pf-mount"></div>
+      </div>
+      <p class="flow-note">
+        Biblioteka <strong>powerflow</strong> (web component) — kropki płyną proporcjonalnie
+        do mocy w watach. Panele → falownik (~97&nbsp;% sprawności) → dom / magazyn / sieć.
+        Etap DC→AC jest uwzględniony w mocy PV (AC) i panelu falownika obok.
+      </p>
+      <div class="balance" id="balanceLine"></div>
+    </section>
+
+    <div class="side-stack">
+      <section class="card" aria-labelledby="invTitle">
+        <h2 id="invTitle"><span class="ico" aria-hidden="true">🔌</span> Falownik</h2>
+        <div class="inv-status">
+          <span>Status:</span>
+          <span class="pill" id="invPill">Praca</span>
+          <span id="invMode">—</span>
+        </div>
+        <div class="inv-grid">
+          <div class="inv-item">
+            <div class="k">Sprawność</div>
+            <div class="v" id="invEff">—</div>
+          </div>
+          <div class="inv-item">
+            <div class="k">Temperatura</div>
+            <div class="v" id="invTemp">—</div>
+          </div>
+          <div class="inv-item">
+            <div class="k">Napięcie AC</div>
+            <div class="v" id="invVac">—</div>
+          </div>
+          <div class="inv-item">
+            <div class="k">Moc DC / AC</div>
+            <div class="v" id="invPower">—</div>
+          </div>
+        </div>
+        <div class="stats-extra">
+          <div class="stat-mini">
+            <div class="k">Autokonsumpcja</div>
+            <div class="v" id="kpiAuto">—</div>
+          </div>
+          <div class="stat-mini">
+            <div class="k">Dziś produkcja</div>
+            <div class="v" id="kpiToday">—</div>
+          </div>
+          <div class="stat-mini">
+            <div class="k">Oszczędność / CO₂</div>
+            <div class="v" id="kpiSave">—</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="chartTitle">
+        <h2 id="chartTitle"><span class="ico" aria-hidden="true">📈</span> Profil dnia (symulacja)</h2>
+        <div class="chart-wrap">
+          <svg id="dayChart" viewBox="0 0 560 180" role="img" aria-label="Wykres produkcji PV i zużycia w ciągu dnia"></svg>
+        </div>
+        <div class="legend">
+          <span><i class="swatch" style="background:var(--solar)"></i> PV (kW)</span>
+          <span><i class="swatch" style="background:var(--home)"></i> Dom (kW)</span>
+          <span><i class="swatch" style="background:var(--accent)"></i> Teraz</span>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <footer>
+    Demo na <a href="https://www.npmjs.com/package/powerflow">powerflow@1.2.0</a>
+    (MIT, vendored lokalnie). Nie są to odczyty z prawdziwej instalacji.
+    <br>
+    <a href="/">← Wróć na stronę główną</a>
+  </footer>
+</div>
+
+<script type="module">
+import { createPowerFlow } from './vendor/powerflow.js';
+
+const INTERVAL_MS = 5 * 60 * 1000;
+const SYSTEM_KWP = 10;
+const INVERTER_EFF = 0.97;
+const BATTERY_KWH = 10;
+const PRICE_PLN_PER_KWH = 0.85;
+const CO2_KG_PER_KWH = 0.7;
+
+const HISTORY_KEY = 'trawiasta_energia_history_v1';
+const STATE_KEY = 'trawiasta_energia_state_v1';
+
+const pfMount = document.getElementById('pf-mount');
+const pf = createPowerFlow(pfMount, {
+  data: { solar: 0, grid: 0, load: 0, battery: 0, batterySoc: 50 },
+  options: {
+    labels: {
+      solar: 'Panele PV',
+      home: 'Dom',
+      grid: 'Sieć',
+      battery: 'Magazyn',
+    },
+    colors: {
+      solar: '#fcd34d',
+      home: '#a78bfa',
+      gridIn: '#60a5fa',
+      gridOut: '#f472b6',
+      batteryIn: '#4ade80',
+      batteryOut: '#fb923c',
+    },
+    nodeStyle: 'soft',
+    nodeShape: 'circle',
+    dotShape: 'bolt',
+    dotCount: 2,
+    trackPulse: true,
+    batteryChargeHighlight: true,
+    speedScale: 1.15,
+    curveBend: 1,
+  },
+});
+
+function warsawParts(date = new Date()) {
+  const fmt = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Warsaw',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(date).filter(p => p.type !== 'literal').map(p => [p.type, p.value]));
+  return {
+    year: +parts.year,
+    month: +parts.month,
+    day: +parts.day,
+    hour: +parts.hour,
+    minute: +parts.minute,
+    second: +parts.second,
+    decimalHour: +parts.hour + +parts.minute / 60 + +parts.second / 3600,
+  };
+}
+
+function formatWarsaw(date = new Date()) {
+  return new Intl.DateTimeFormat('pl-PL', {
+    timeZone: 'Europe/Warsaw',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  }).format(date);
+}
+
+function mulberry32(a) {
+  return function () {
+    let t = (a += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function seedFromSlot(date) {
+  const w = warsawParts(date);
+  const slot = Math.floor((w.hour * 60 + w.minute) / 5);
+  return w.year * 1e6 + w.month * 1e4 + w.day * 100 + slot;
+}
+
+/** Rough solar irradiance factor 0–1 for Warsaw (~52°N), season-aware. */
+function solarFactor(decimalHour, month) {
+  // Approximate sunrise/sunset by month (CET/CEST local clock is fine for demo)
+  const dayLen = [8.2, 9.5, 11.5, 13.5, 15.2, 16.3, 16.0, 14.5, 12.5, 10.5, 8.8, 7.8][month - 1];
+  const noon = 12.0;
+  const half = dayLen / 2;
+  const sunrise = noon - half;
+  const sunset = noon + half;
+  if (decimalHour <= sunrise || decimalHour >= sunset) return 0;
+  const x = (decimalHour - sunrise) / (sunset - sunrise);
+  // Smooth midday peak
+  const curve = Math.sin(Math.PI * x);
+  const season = [0.35, 0.5, 0.7, 0.85, 0.95, 1, 0.98, 0.88, 0.72, 0.55, 0.4, 0.32][month - 1];
+  return Math.max(0, Math.min(1, curve * season));
+}
+
+function houseLoadW(decimalHour, rnd) {
+  // Base + morning/evening peaks typical for a Polish home
+  let base = 450 + rnd() * 200;
+  if (decimalHour >= 6.5 && decimalHour < 9) base += 800 + rnd() * 600;
+  if (decimalHour >= 11.5 && decimalHour < 14) base += 300 + rnd() * 400;
+  if (decimalHour >= 17 && decimalHour < 22) base += 1200 + rnd() * 900;
+  if (decimalHour >= 22 || decimalHour < 5) base = 280 + rnd() * 180;
+  return Math.round(base);
+}
+
+function generateReading(date = new Date(), forceRandom = false) {
+  const w = warsawParts(date);
+  const seed = seedFromSlot(date) ^ 0x7a61;
+  const rnd = forceRandom ? (() => Math.random()) : mulberry32(seed);
+
+  const sf = solarFactor(w.decimalHour, w.month);
+  const cloud = 0.55 + rnd() * 0.45; // 55–100% of clear-sky
+  const pvDcW = Math.round(SYSTEM_KWP * 1000 * sf * cloud);
+  const eff = INVERTER_EFF - 0.01 + rnd() * 0.02; // ~96–98%
+  const solarAc = Math.round(pvDcW * eff);
+
+  const load = houseLoadW(w.decimalHour, rnd);
+
+  // Persist SOC-ish between refreshes via localStorage
+  let soc = 55;
+  try {
+    const prev = JSON.parse(localStorage.getItem(STATE_KEY) || 'null');
+    if (prev && typeof prev.soc === 'number') soc = prev.soc;
+  } catch {}
+
+  // Battery strategy: charge when surplus, discharge when deficit (within SOC limits)
+  let surplus = solarAc - load;
+  let battery = 0; // + charge, - discharge
+  const maxCharge = 4500;
+  const maxDischarge = 4500;
+
+  if (surplus > 80 && soc < 96) {
+    battery = Math.min(surplus, maxCharge, (96 - soc) / 100 * BATTERY_KWH * 1000);
+    battery = Math.round(battery * (0.7 + rnd() * 0.3));
+  } else if (surplus < -80 && soc > 12) {
+    battery = -Math.min(-surplus, maxDischarge, (soc - 12) / 100 * BATTERY_KWH * 1000);
+    battery = Math.round(battery * (0.7 + rnd() * 0.3));
+  } else {
+    battery = Math.round((rnd() - 0.5) * 120); // tiny idle wobble
+    if (soc <= 12 && battery < 0) battery = 0;
+    if (soc >= 96 && battery > 0) battery = 0;
+  }
+
+  // grid = load + battery - solar  (positive = import)
+  let grid = load + battery - solarAc;
+  // Snap tiny residual to 0
+  if (Math.abs(grid) < 25) {
+    battery -= grid;
+    grid = 0;
+  }
+  grid = Math.round(grid);
+  battery = Math.round(battery);
+
+  // Update SOC estimate for next tick (~5 min)
+  const hours = INTERVAL_MS / 3600000;
+  soc = Math.max(5, Math.min(100, soc + (battery / 1000) * hours / BATTERY_KWH * 100));
+  soc = Math.round(soc * 10) / 10;
+
+  // Verify balance: solar + grid - battery === load
+  const check = solarAc + grid - battery;
+  if (check !== load) {
+    grid += load - check;
+  }
+
+  const selfConsumed = Math.min(solarAc, load + Math.max(battery, 0));
+  const autok = solarAc > 0 ? Math.round((selfConsumed / solarAc) * 100) : 0;
+
+  // Day production estimate from curve integral (rough)
+  let todayKwh = 0;
+  for (let h = 0; h < w.decimalHour; h += 0.25) {
+    const f = solarFactor(h, w.month);
+    todayKwh += (SYSTEM_KWP * f * 0.75) * 0.25; // 0.75 avg cloud
+  }
+  todayKwh = Math.round(todayKwh * 10) / 10;
+  const savedPln = Math.round(todayKwh * 0.55 * PRICE_PLN_PER_KWH * 100) / 100;
+  const co2 = Math.round(todayKwh * CO2_KG_PER_KWH * 10) / 10;
+
+  const invTemp = solarAc > 100
+    ? Math.round(28 + (solarAc / (SYSTEM_KWP * 1000)) * 28 + rnd() * 4)
+    : Math.round(18 + rnd() * 4);
+  const vac = Math.round(228 + rnd() * 8);
+
+  let mode = 'Czuwanie';
+  let pill = 'off';
+  if (solarAc > 50) { mode = 'Praca MPPT'; pill = 'ok'; }
+  else if (battery < -100) { mode = 'Zasilanie z magazynu'; pill = 'warn'; }
+  else if (grid > 100) { mode = 'Import z sieci'; pill = 'warn'; }
+
+  return {
+    at: date.toISOString(),
+    solar: solarAc,
+    solarDc: pvDcW,
+    grid,
+    load,
+    battery,
+    batterySoc: soc,
+    eff: Math.round(eff * 1000) / 10,
+    invTemp,
+    vac,
+    mode,
+    pill,
+    autok,
+    todayKwh,
+    savedPln,
+    co2,
+    month: w.month,
+    decimalHour: w.decimalHour,
+  };
+}
+
+function kw(w) {
+  const k = w / 1000;
+  const abs = Math.abs(k);
+  const s = abs >= 10 ? abs.toFixed(1) : abs.toFixed(2);
+  return (w < 0 ? '−' : '') + s.replace('.', ',') + ' kW';
+}
+
+function applyReading(r) {
+  pf.update({
+    data: {
+      solar: r.solar > 0 ? r.solar : null,
+      grid: r.grid,
+      load: r.load,
+      battery: r.battery,
+      batterySoc: r.batterySoc,
+    },
+  });
+
+  document.getElementById('kpiPv').textContent = kw(r.solar);
+  document.getElementById('kpiPvSub').textContent = r.solarDc
+    ? `DC ${kw(r.solarDc).replace(' kW','')} → AC`
+    : 'po falowniku';
+  document.getElementById('kpiLoad').textContent = kw(r.load);
+
+  const batDir = r.battery > 40 ? 'ładowanie' : r.battery < -40 ? 'rozładowanie' : 'bezczynność';
+  document.getElementById('kpiBat').textContent = kw(Math.abs(r.battery));
+  document.getElementById('kpiBatSub').textContent = `SOC ${r.batterySoc.toFixed(0)}% · ${batDir}`;
+
+  const gridCard = document.getElementById('kpiGridCard');
+  const exporting = r.grid < -40;
+  const importing = r.grid > 40;
+  gridCard.classList.toggle('export', exporting);
+  document.getElementById('kpiGrid').textContent = kw(Math.abs(r.grid));
+  document.getElementById('kpiGridSub').textContent = exporting
+    ? 'eksport do sieci'
+    : importing
+      ? 'import z sieci'
+      : 'bilans zerowy';
+
+  document.getElementById('invEff').textContent = r.eff.toFixed(1).replace('.', ',') + ' %';
+  document.getElementById('invTemp').textContent = r.invTemp + ' °C';
+  document.getElementById('invVac').textContent = r.vac + ' V';
+  document.getElementById('invPower').textContent =
+    (r.solarDc / 1000).toFixed(2).replace('.', ',') + ' / ' +
+    (r.solar / 1000).toFixed(2).replace('.', ',') + ' kW';
+
+  const pill = document.getElementById('invPill');
+  pill.textContent = r.pill === 'ok' ? 'Online' : r.pill === 'warn' ? 'Aktywny' : 'Czuwanie';
+  pill.className = 'pill' + (r.pill === 'ok' ? '' : r.pill === 'warn' ? ' warn' : ' off');
+  document.getElementById('invMode').textContent = r.mode;
+
+  document.getElementById('kpiAuto').textContent = r.autok + ' %';
+  document.getElementById('kpiToday').textContent = r.todayKwh.toFixed(1).replace('.', ',') + ' kWh';
+  document.getElementById('kpiSave').textContent =
+    r.savedPln.toFixed(2).replace('.', ',') + ' zł · ' + r.co2.toFixed(1).replace('.', ',') + ' kg';
+
+  document.getElementById('lastUpdate').textContent = formatWarsaw(new Date(r.at));
+  document.getElementById('warsawNow').textContent = formatWarsaw(new Date());
+
+  const bal = `bilans: PV ${r.solar} W + sieć ${r.grid} W − mag. ${r.battery} W = dom ${r.load} W`;
+  document.getElementById('balanceLine').innerHTML =
+    `Równanie mocy: <code>${bal}</code>`;
+
+  try {
+    localStorage.setItem(STATE_KEY, JSON.stringify({ soc: r.batterySoc, at: r.at }));
+  } catch {}
+
+  pushHistory(r);
+  drawChart(r);
+}
+
+function pushHistory(r) {
+  let hist = [];
+  try { hist = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch {}
+  hist.push({ t: r.at, pv: r.solar, load: r.load, grid: r.grid, bat: r.battery, soc: r.batterySoc });
+  if (hist.length > 48) hist = hist.slice(-48);
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(hist)); } catch {}
+}
+
+function drawChart(current) {
+  const svg = document.getElementById('dayChart');
+  const W = 560, H = 180;
+  const pad = { l: 36, r: 12, t: 14, b: 28 };
+  const iw = W - pad.l - pad.r;
+  const ih = H - pad.t - pad.b;
+
+  const pts = [];
+  for (let h = 0; h <= 24; h += 0.5) {
+    const sf = solarFactor(h, current.month);
+    const pv = SYSTEM_KWP * sf * 0.78;
+    const load = houseLoadW(h, mulberry32((h * 100) | 0 ^ current.month * 17)) / 1000;
+    pts.push({ h, pv, load });
+  }
+  const ymax = Math.max(SYSTEM_KWP * 1.05, ...pts.map(p => Math.max(p.pv, p.load)), 1);
+
+  const x = (h) => pad.l + (h / 24) * iw;
+  const y = (v) => pad.t + ih - (v / ymax) * ih;
+
+  function path(key) {
+    return pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.h).toFixed(1)},${y(p[key]).toFixed(1)}`).join(' ');
+  }
+
+  const areaPv = path('pv') + ` L${x(24).toFixed(1)},${y(0).toFixed(1)} L${x(0).toFixed(1)},${y(0).toFixed(1)} Z`;
+  const nowX = x(current.decimalHour);
+
+  const ticks = [0, 6, 12, 18, 24].map(h =>
+    `<text x="${x(h)}" y="${H - 8}" text-anchor="middle" fill="rgba(232,245,233,0.45)" font-size="11" font-family="Outfit,sans-serif">${String(h).padStart(2,'0')}:00</text>`
+  ).join('');
+
+  const yTicks = [0, ymax / 2, ymax].map(v => {
+    const yy = y(v);
+    return `<line x1="${pad.l}" y1="${yy}" x2="${W - pad.r}" y2="${yy}" stroke="rgba(255,255,255,0.06)" />
+      <text x="${pad.l - 6}" y="${yy + 3}" text-anchor="end" fill="rgba(232,245,233,0.4)" font-size="10" font-family="Outfit,sans-serif">${v.toFixed(1)}</text>`;
+  }).join('');
+
+  svg.innerHTML = `
+    <rect x="0" y="0" width="${W}" height="${H}" fill="rgba(0,0,0,0.2)" rx="10"/>
+    ${yTicks}
+    <path d="${areaPv}" fill="rgba(252,211,77,0.18)" />
+    <path d="${path('pv')}" fill="none" stroke="#fcd34d" stroke-width="2.2" stroke-linejoin="round"/>
+    <path d="${path('load')}" fill="none" stroke="#a78bfa" stroke-width="2" stroke-dasharray="5 3" stroke-linejoin="round"/>
+    <line x1="${nowX}" y1="${pad.t}" x2="${nowX}" y2="${pad.t + ih}" stroke="#3dff7a" stroke-width="1.5" stroke-dasharray="3 3" opacity="0.85"/>
+    <circle cx="${nowX}" cy="${y(current.solar / 1000)}" r="4.5" fill="#3dff7a" stroke="#0a0c0a" stroke-width="1.5"/>
+    ${ticks}
+  `;
+}
+
+let nextAt = Date.now() + INTERVAL_MS;
+let currentReading = null;
+
+function refresh(forceRandom = false) {
+  currentReading = generateReading(new Date(), forceRandom);
+  applyReading(currentReading);
+  nextAt = Date.now() + INTERVAL_MS;
+}
+
+function tickCountdown() {
+  document.getElementById('warsawNow').textContent = formatWarsaw(new Date());
+  const left = Math.max(0, nextAt - Date.now());
+  const m = Math.floor(left / 60000);
+  const s = Math.floor((left % 60000) / 1000);
+  document.getElementById('countdown').textContent =
+    `${m}:${String(s).padStart(2, '0')}`;
+  if (left <= 0) refresh(false);
+}
+
+document.getElementById('btnReroll').addEventListener('click', () => {
+  refresh(true);
+});
+
+refresh(false);
+tickCountdown();
+setInterval(tickCountdown, 1000);
+</script>
+</body>
+</html>

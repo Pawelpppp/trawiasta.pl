@@ -1,0 +1,65 @@
+{
+  "name": "powerflow",
+  "version": "1.2.0",
+  "description": "Animated, framework-agnostic SVG energy-flow diagram — solar, grid, home, battery and wallbox with power-proportional flow animation. Ships as a <power-flow> Web Component and a vanilla API; works with React, Angular, Vue or plain HTML.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Thomas Mihailovits",
+  "homepage": "https://mihaitom.github.io/power-flow/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mihaitom/power-flow.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mihaitom/power-flow/issues"
+  },
+  "keywords": [
+    "solar",
+    "photovoltaic",
+    "energy",
+    "power-flow",
+    "svg",
+    "diagram",
+    "web-component",
+    "custom-element",
+    "framework-agnostic",
+    "react",
+    "angular",
+    "vue"
+  ],
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/powerflow.umd.cjs",
+  "module": "./dist/powerflow.js",
+  "types": "./dist/index.d.ts",
+  "unpkg": "./dist/powerflow.umd.cjs",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/powerflow.js",
+      "require": "./dist/powerflow.umd.cjs"
+    }
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run build:lib && npm run build:site",
+    "build:lib": "vite build -c vite.config.lib.ts && tsc --declaration --emitDeclarationOnly -p tsconfig.build.json",
+    "build:site": "vite build",
+    "preview": "vite preview",
+    "prepublishOnly": "npm run build:lib",
+    "capture:gif": "node scripts/capture-gif.cjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@mdi/js": "^7.0.0",
+    "prettier": "3.8.3",
+    "typescript": "^5.4.0",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.10"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true
+  }
+}
