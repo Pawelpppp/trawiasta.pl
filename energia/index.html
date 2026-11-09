@@ -406,6 +406,8 @@
   footer a { color: var(--accent); text-decoration: none; }
   footer a:hover { text-decoration: underline; }
 </style>
+<link rel="stylesheet" href="/assets/menu.css">
+<script src="/assets/menu.js" defer></script>
 </head>
 <body>
 <div class="wrap">
@@ -420,11 +422,10 @@
       </svg>
       <span class="brand-name">trawiasta.pl</span>
     </a>
-    <nav class="nav-links" aria-label="Nawigacja">
-      <a href="/">Strona główna</a>
-      <a href="/licznik/">Licznik</a>
+    <div class="nav-links">
       <button type="button" class="btn btn-primary" id="btnReroll">Losuj teraz</button>
-    </nav>
+      <div data-site-menu></div>
+    </div>
   </header>
 
   <section class="hero">
