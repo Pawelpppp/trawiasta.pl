@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Przepływ energii PV | trawiasta.pl</title>
-<meta name="description" content="Demonstracyjna wizualizacja przepływu energii w instalacji fotowoltaicznej z falownikiem — panele PV, magazyn, dom i sieć. Dane losowane co 5 minut.">
+<meta name="description" content="Demonstracyjna wizualizacja przepływu energii w instalacji fotowoltaicznej z falownikiem — panele PV, falownik, dom i sieć. Dane losowane co 5 minut.">
 <link rel="canonical" href="https://trawiasta.pl/energia/">
 <meta name="theme-color" content="#0a0c0a">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -40,8 +40,7 @@
     --home: #a78bfa;
     --grid-in: #60a5fa;
     --grid-out: #f472b6;
-    --bat-in: #4ade80;
-    --bat-out: #fb923c;
+    --warn: #fb923c;
     --inv: #38bdf8;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -202,8 +201,11 @@
     gap: 0.75rem;
     margin-bottom: 1.25rem;
   }
+  @media (max-width: 639px) {
+    .kpi-grid .kpi.grid { grid-column: 1 / -1; }
+  }
   @media (min-width: 640px) {
-    .kpi-grid { grid-template-columns: repeat(4, 1fr); }
+    .kpi-grid { grid-template-columns: repeat(3, 1fr); }
   }
   .kpi {
     background: var(--card);
@@ -233,7 +235,6 @@
   }
   .kpi.solar .value { color: var(--solar); }
   .kpi.home .value { color: var(--home); }
-  .kpi.bat .value { color: var(--bat-in); }
   .kpi.grid .value { color: var(--grid-in); }
   .kpi.grid.export .value { color: var(--grid-out); }
   .layout {
@@ -331,7 +332,7 @@
   }
   .inv-status .pill.warn {
     background: rgba(251, 146, 60, 0.18);
-    color: var(--bat-out);
+    color: var(--warn);
   }
   .inv-status .pill.off {
     background: rgba(255,255,255,0.08);
@@ -431,7 +432,7 @@
     <h1>Przepływ energii w instalacji PV</h1>
     <p>
       Animowany diagram instalacji fotowoltaicznej ~10&nbsp;kWp z falownikiem,
-      magazynem energii, domem i siecią. Wartości zależą od pory dnia w Warszawie
+      bez magazynu energii — nadwyżka trafia do sieci, niedobór pobierany jest z sieci. Wartości zależą od pory dnia w Warszawie
       i losują się co 5&nbsp;minut.
     </p>
   </section>
@@ -456,11 +457,6 @@
       <div class="value" id="kpiLoad">—</div>
       <div class="sub" id="kpiLoadSub">chwilowe</div>
     </div>
-    <div class="kpi bat">
-      <div class="label">Magazyn energii</div>
-      <div class="value" id="kpiBat">—</div>
-      <div class="sub" id="kpiBatSub">SOC —</div>
-    </div>
     <div class="kpi grid" id="kpiGridCard">
       <div class="label">Sieć</div>
       <div class="value" id="kpiGrid">—</div>
@@ -476,7 +472,7 @@
       </div>
       <p class="flow-note">
         Biblioteka <strong>powerflow</strong> (web component) — kropki płyną proporcjonalnie
-        do mocy w watach. Panele → falownik (~97&nbsp;% sprawności) → dom / magazyn / sieć.
+        do mocy w watach. Panele → falownik (~97&nbsp;% sprawności) → dom, a nadwyżka do sieci.
         Etap DC→AC jest uwzględniony w mocy PV (AC) i panelu falownika obok.
       </p>
       <div class="balance" id="balanceLine"></div>
@@ -552,37 +548,33 @@ import { createPowerFlow } from './vendor/powerflow.js';
 const INTERVAL_MS = 5 * 60 * 1000;
 const SYSTEM_KWP = 10;
 const INVERTER_EFF = 0.97;
-const BATTERY_KWH = 10;
+const EXPORT_PLN_PER_KWH = 0.30; // przybliżona wartość net-billingu
 const PRICE_PLN_PER_KWH = 0.85;
 const CO2_KG_PER_KWH = 0.7;
 
-const HISTORY_KEY = 'trawiasta_energia_history_v1';
-const STATE_KEY = 'trawiasta_energia_state_v1';
+const HISTORY_KEY = 'trawiasta_energia_history_v2';
+try { localStorage.removeItem('trawiasta_energia_state_v1'); } catch {}
 
 const pfMount = document.getElementById('pf-mount');
 const pf = createPowerFlow(pfMount, {
-  data: { solar: 0, grid: 0, load: 0, battery: 0, batterySoc: 50 },
+  data: { solar: 0, grid: 0, load: 0 },
   options: {
     labels: {
       solar: 'Panele PV',
       home: 'Dom',
       grid: 'Sieć',
-      battery: 'Magazyn',
     },
     colors: {
       solar: '#fcd34d',
       home: '#a78bfa',
       gridIn: '#60a5fa',
       gridOut: '#f472b6',
-      batteryIn: '#4ade80',
-      batteryOut: '#fb923c',
     },
     nodeStyle: 'soft',
     nodeShape: 'circle',
     dotShape: 'bolt',
     dotCount: 2,
     trackPulse: true,
-    batteryChargeHighlight: true,
     speedScale: 1.15,
     curveBend: 1,
   },
@@ -669,63 +661,24 @@ function generateReading(date = new Date(), forceRandom = false) {
 
   const load = houseLoadW(w.decimalHour, rnd);
 
-  // Persist SOC-ish between refreshes via localStorage
-  let soc = 55;
-  try {
-    const prev = JSON.parse(localStorage.getItem(STATE_KEY) || 'null');
-    if (prev && typeof prev.soc === 'number') soc = prev.soc;
-  } catch {}
-
-  // Battery strategy: charge when surplus, discharge when deficit (within SOC limits)
-  let surplus = solarAc - load;
-  let battery = 0; // + charge, - discharge
-  const maxCharge = 4500;
-  const maxDischarge = 4500;
-
-  if (surplus > 80 && soc < 96) {
-    battery = Math.min(surplus, maxCharge, (96 - soc) / 100 * BATTERY_KWH * 1000);
-    battery = Math.round(battery * (0.7 + rnd() * 0.3));
-  } else if (surplus < -80 && soc > 12) {
-    battery = -Math.min(-surplus, maxDischarge, (soc - 12) / 100 * BATTERY_KWH * 1000);
-    battery = Math.round(battery * (0.7 + rnd() * 0.3));
-  } else {
-    battery = Math.round((rnd() - 0.5) * 120); // tiny idle wobble
-    if (soc <= 12 && battery < 0) battery = 0;
-    if (soc >= 96 && battery > 0) battery = 0;
-  }
-
-  // grid = load + battery - solar  (positive = import)
-  let grid = load + battery - solarAc;
-  // Snap tiny residual to 0
-  if (Math.abs(grid) < 25) {
-    battery -= grid;
-    grid = 0;
-  }
-  grid = Math.round(grid);
-  battery = Math.round(battery);
-
-  // Update SOC estimate for next tick (~5 min)
-  const hours = INTERVAL_MS / 3600000;
-  soc = Math.max(5, Math.min(100, soc + (battery / 1000) * hours / BATTERY_KWH * 100));
-  soc = Math.round(soc * 10) / 10;
-
-  // Verify balance: solar + grid - battery === load
-  const check = solarAc + grid - battery;
-  if (check !== load) {
-    grid += load - check;
-  }
-
-  const selfConsumed = Math.min(solarAc, load + Math.max(battery, 0));
+  // Bez magazynu: PV (AC) najpierw zasila dom, nadwyżka -> eksport, niedobór -> import.
+  // grid > 0 = import, grid < 0 = eksport;  solar + grid = load
+  const grid = load - solarAc;
+  const selfConsumed = Math.min(solarAc, load);
   const autok = solarAc > 0 ? Math.round((selfConsumed / solarAc) * 100) : 0;
 
   // Day production estimate from curve integral (rough)
-  let todayKwh = 0;
+  // oraz podział na zużycie własne i eksport (krok 15 min)
+  let todayKwh = 0, selfKwh = 0;
   for (let h = 0; h < w.decimalHour; h += 0.25) {
-    const f = solarFactor(h, w.month);
-    todayKwh += (SYSTEM_KWP * f * 0.75) * 0.25; // 0.75 avg cloud
+    const pvKw = SYSTEM_KWP * solarFactor(h, w.month) * 0.75 * INVERTER_EFF; // 0.75 avg cloud
+    const loadKw = houseLoadW(h, mulberry32(((h * 100) | 0) ^ (w.month * 17))) / 1000;
+    todayKwh += pvKw * 0.25;
+    selfKwh += Math.min(pvKw, loadKw) * 0.25;
   }
+  const exportKwh = todayKwh - selfKwh;
+  const savedPln = Math.round((selfKwh * PRICE_PLN_PER_KWH + exportKwh * EXPORT_PLN_PER_KWH) * 100) / 100;
   todayKwh = Math.round(todayKwh * 10) / 10;
-  const savedPln = Math.round(todayKwh * 0.55 * PRICE_PLN_PER_KWH * 100) / 100;
   const co2 = Math.round(todayKwh * CO2_KG_PER_KWH * 10) / 10;
 
   const invTemp = solarAc > 100
@@ -736,7 +689,6 @@ function generateReading(date = new Date(), forceRandom = false) {
   let mode = 'Czuwanie';
   let pill = 'off';
   if (solarAc > 50) { mode = 'Praca MPPT'; pill = 'ok'; }
-  else if (battery < -100) { mode = 'Zasilanie z magazynu'; pill = 'warn'; }
   else if (grid > 100) { mode = 'Import z sieci'; pill = 'warn'; }
 
   return {
@@ -745,8 +697,6 @@ function generateReading(date = new Date(), forceRandom = false) {
     solarDc: pvDcW,
     grid,
     load,
-    battery,
-    batterySoc: soc,
     eff: Math.round(eff * 1000) / 10,
     invTemp,
     vac,
@@ -774,8 +724,8 @@ function applyReading(r) {
       solar: r.solar > 0 ? r.solar : null,
       grid: r.grid,
       load: r.load,
-      battery: r.battery,
-      batterySoc: r.batterySoc,
+      battery: null,
+      batterySoc: null,
     },
   });
 
@@ -784,10 +734,6 @@ function applyReading(r) {
     ? `DC ${kw(r.solarDc).replace(' kW','')} → AC`
     : 'po falowniku';
   document.getElementById('kpiLoad').textContent = kw(r.load);
-
-  const batDir = r.battery > 40 ? 'ładowanie' : r.battery < -40 ? 'rozładowanie' : 'bezczynność';
-  document.getElementById('kpiBat').textContent = kw(Math.abs(r.battery));
-  document.getElementById('kpiBatSub').textContent = `SOC ${r.batterySoc.toFixed(0)}% · ${batDir}`;
 
   const gridCard = document.getElementById('kpiGridCard');
   const exporting = r.grid < -40;
@@ -820,20 +766,13 @@ function applyReading(r) {
   document.getElementById('lastUpdate').textContent = formatWarsaw(new Date(r.at));
   document.getElementById('warsawNow').textContent = formatWarsaw(new Date());
 
-  const batLabel = r.battery >= 0
-    ? `mag. ład. ${r.battery} W`
-    : `mag. rozład. ${-r.battery} W`;
   const gridLabel = r.grid >= 0
     ? `sieć import ${r.grid} W`
     : `sieć eksport ${-r.grid} W`;
-  const left = r.solar + Math.max(r.grid, 0) + Math.max(-r.battery, 0);
-  const right = r.load + Math.max(-r.grid, 0) + Math.max(r.battery, 0);
+  const left = r.solar + Math.max(r.grid, 0);
+  const right = r.load + Math.max(-r.grid, 0);
   document.getElementById('balanceLine').innerHTML =
-    `Bilans energii: <code>źródła ${left} W = ujścia ${right} W</code> · PV ${r.solar} W, dom ${r.load} W, ${gridLabel}, ${batLabel}`
-
-  try {
-    localStorage.setItem(STATE_KEY, JSON.stringify({ soc: r.batterySoc, at: r.at }));
-  } catch {}
+    `Bilans energii: <code>źródła ${left} W = ujścia ${right} W</code> · PV ${r.solar} W, dom ${r.load} W, ${gridLabel}`;
 
   pushHistory(r);
   drawChart(r);
@@ -842,7 +781,7 @@ function applyReading(r) {
 function pushHistory(r) {
   let hist = [];
   try { hist = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch {}
-  hist.push({ t: r.at, pv: r.solar, load: r.load, grid: r.grid, bat: r.battery, soc: r.batterySoc });
+  hist.push({ t: r.at, pv: r.solar, load: r.load, grid: r.grid });
   if (hist.length > 48) hist = hist.slice(-48);
   try { localStorage.setItem(HISTORY_KEY, JSON.stringify(hist)); } catch {}
 }
