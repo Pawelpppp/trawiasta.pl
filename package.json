@@ -1,0 +1,8 @@
+{
+  "name": "trawiasta.pl",
+  "private": true,
+  "description": "Statyczna strona trawiasta.pl (bez kroku budowania)",
+  "scripts": {
+    "build": "echo \"Statyczny HTML - nic do zbudowania\""
+  }
+}
