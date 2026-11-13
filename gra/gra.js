@@ -197,6 +197,10 @@
   var player = null;
   var boss = null;
   var transitionT = 0;
+  var transPhase = '';
+  var hasBow = false;
+  var dance = null;
+  var danceSparkT = 0;
   var lastTs = 0;
   var raf = 0;
   var shakeT = 0;
@@ -229,6 +233,10 @@
     safeSx = 1; safeSy = 1; safeVx = 0; safeVy = 0; safeFlash = 0;
     boss = null;
     transitionT = 0;
+    transPhase = '';
+    hasBow = false;
+    dance = null;
+    danceSparkT = 0;
     shakeT = 0;
     coffeeSparkT = 0;
     player = {
@@ -263,7 +271,9 @@
     hudLives.setAttribute('aria-label', 'Życia: ' + lives + ' z ' + LIVES_MAX);
     hudBudget.textContent = fmtMoney(budget);
     hudScore.textContent = String(score);
-    hudStage.textContent = stage === 2 || mode === 'transition' ? 'Etap 2 — Boss CTO' : 'Etap 1';
+    if (mode === 'transition' && transPhase === 'dance') hudStage.textContent = 'Etap 1 ukończony!';
+    else if (stage === 2 || mode === 'transition') hudStage.textContent = 'Etap 2 — Boss CTO';
+    else hudStage.textContent = 'Etap 1';
     if (coffeeUntil > time) {
       hudCoffee.hidden = false;
       hudCoffee.textContent = 'Kawa: ' + Math.ceil(coffeeUntil - time) + ' s';
@@ -273,7 +283,7 @@
     var playing = mode === 'playing' || mode === 'transition';
     hud.hidden = !playing && mode !== 'victory' && mode !== 'gameover';
     appEl.classList.toggle('playing', playing);
-    btnShoot.disabled = !(playing && stage === 2 && mode !== 'transition');
+    btnShoot.disabled = !(mode === 'playing' && hasBow);
   }
 
   function addFloat(x, y, text, color) {
@@ -344,13 +354,14 @@
     else spawnItem('hazard', null, null, ['L4', 'Wypowiedzenie', 'Cięcia Kosztów']);
   }
 
-  function startTransition() {
-    mode = 'transition';
+  var DANCE_CLEAR = 2.65;
+  var BOSS_INTRO = 1.55;
+
+  function beginBossIntro() {
+    transPhase = 'intro';
+    hasBow = true;
+    dance = null;
     stage = 2;
-    transitionT = 2.1;
-    items = [];
-    arrows = [];
-    playAlarm();
     boss = {
       x: GAME_W / 2,
       y: -40,
@@ -364,6 +375,32 @@
     updateHud();
   }
 
+  function startTransition(opts) {
+    var skipDance = opts && opts.skipDance;
+    mode = 'transition';
+    stage = 2;
+    items = [];
+    arrows = [];
+    keys.left = keys.right = keys.shoot = false;
+    playAlarm();
+    if (skipDance) {
+      dance = null;
+      transPhase = 'intro';
+      transitionT = 2.1;
+      beginBossIntro();
+    } else {
+      hasBow = false;
+      boss = null;
+      transPhase = 'dance';
+      dance = { kind: 'clear', t: 0, dur: DANCE_CLEAR, looping: false };
+      danceSparkT = 0;
+      transitionT = DANCE_CLEAR + BOSS_INTRO;
+      burst(player.x, player.y - 70, '#3dff7a', 16);
+      burst(player.x, player.y - 70, '#ffd76a', 10);
+      updateHud();
+    }
+  }
+
   function startStage2Direct() {
     if (mode === 'start' || mode === 'victory' || mode === 'gameover') {
       resetGame();
@@ -371,7 +408,7 @@
       mode = 'playing';
     }
     budget = Math.max(budget, BUDGET_GOAL);
-    startTransition();
+    startTransition({ skipDance: true });
   }
 
   function shoot() {
@@ -411,6 +448,14 @@
       document.getElementById('win-score').textContent = String(score);
       document.getElementById('win-meta').textContent =
         ' (budżet ' + fmtMoney(budget) + ', życia × 500, budżet jako bonus)';
+      hasBow = false;
+      boss = null;
+      items = [];
+      arrows = [];
+      dance = { kind: 'victory', t: 0, dur: 3.2, looping: true };
+      danceSparkT = 0;
+      burst(player.x, player.y - 70, '#3dff7a', 18);
+      burst(player.x, player.y - 70, '#ffd76a', 12);
       showOverlay(ovWin);
       play('victory');
     } else {
@@ -443,18 +488,20 @@
     if (shakeT > 0) shakeT = Math.max(0, shakeT - dt);
     updateSafe(dt);
 
+    var canControl = mode === 'playing';
     var spd = playerSpeed();
-    var dir = (keys.left ? -1 : 0) + (keys.right ? 1 : 0);
+    var dir = canControl ? ((keys.left ? -1 : 0) + (keys.right ? 1 : 0)) : 0;
     if (dir) {
       player.x += dir * spd * dt;
       player.facing = dir;
       player.walk += dt * (coffeeUntil > time ? 16 : 11);
-    } else {
+    } else if (!dance) {
       player.walk *= Math.max(0, 1 - dt * 8);
     }
     var margin = 36;
     player.x = Math.max(margin, Math.min(GAME_W - margin, player.x));
-    if (keys.shoot) shoot();
+    if (canControl && keys.shoot) shoot();
+    updateDance(dt);
 
     var i, it, hb, box;
 
@@ -470,13 +517,18 @@
 
     if (mode === 'transition') {
       transitionT -= dt;
-      if (boss) {
+      if (transPhase === 'dance') {
+        if (!dance || dance.t >= dance.dur) beginBossIntro();
+      } else if (boss) {
         boss.t += dt;
         boss.y += (boss.targetY - boss.y) * Math.min(1, dt * 3.2);
       }
-      if (transitionT <= 0) {
+      if (transPhase === 'intro' && transitionT <= 0) {
         mode = 'playing';
         stage = 2;
+        hasBow = true;
+        dance = null;
+        transPhase = '';
         updateHud();
       }
     }
@@ -555,19 +607,167 @@
       }
     }
 
+    updateFx(dt);
+  }
+
+  function updateFx(dt) {
+    var i, p;
     for (i = floats.length - 1; i >= 0; i--) {
       floats[i].life -= dt;
       floats[i].y -= 55 * dt;
       if (floats[i].life <= 0) floats.splice(i, 1);
     }
     for (i = particles.length - 1; i >= 0; i--) {
-      var p = particles[i];
+      p = particles[i];
       p.life -= dt;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.vy += (p.grav != null ? p.grav : 90) * dt;
       if (p.life <= 0) particles.splice(i, 1);
     }
+  }
+
+  function updateVictory(dt) {
+    time += dt;
+    updateSafe(dt);
+    updateDance(dt);
+    updateFx(dt);
+  }
+
+  function updateDance(dt) {
+    if (!dance) return;
+    dance.t += dt;
+    if (dance.looping && dance.dur > 0 && dance.t >= dance.dur) dance.t -= dance.dur;
+    emitDanceFx(dt);
+  }
+
+  function emitDanceFx(dt) {
+    if (!player) return;
+    danceSparkT -= dt;
+    if (danceSparkT > 0) return;
+    danceSparkT = mode === 'victory' ? 0.055 : 0.07;
+    if (particles.length >= MAX_PARTICLES) return;
+    var n = MAX_PARTICLES <= 48 ? 2 : 4;
+    var colors = ['#3dff7a', '#b8ff3d', '#ffd76a', '#ffffff', '#ff7eb0', '#7ad7ff'];
+    var pose = getPlayerPose();
+    var cx = player.x + (pose.xOff || 0);
+    var i, bit;
+    for (i = 0; i < n; i++) {
+      bit = Math.random() < 0.22;
+      particles.push({
+        x: cx + rand(-46, 46),
+        y: player.y - rand(10, 140),
+        vx: rand(-90, 90),
+        vy: rand(-160, -30),
+        color: colors[(Math.random() * colors.length) | 0],
+        life: 0.55 + Math.random() * 0.45,
+        r: bit ? 6 : (2 + Math.random() * 3.5),
+        pixel: true,
+        grav: 150,
+        bill: bit
+      });
+    }
+    trimParticles();
+  }
+
+  function getPlayerPose() {
+    if (dance && (mode === 'transition' || mode === 'victory' || mode === 'playing')) {
+      return dancePose(dance);
+    }
+    var moving = mode === 'playing' && (keys.left || keys.right);
+    var walk = Math.sin(player.walk) * (moving ? 1 : 0.15);
+    var bob = (!reduceMotion && moving) ? Math.abs(Math.sin(player.walk * 1.05)) * 5.5 : 0;
+    return {
+      bob: bob,
+      hip: walk * 0.1,
+      armL: 0.36 + walk * 0.28,
+      armR: hasBow ? -0.22 : (-0.38 - walk * 0.28),
+      legL: walk * 6,
+      legR: -walk * 6,
+      flip: 1,
+      spinRot: 0,
+      xOff: 0
+    };
+  }
+
+  function dancePose(d) {
+    var t = d.t;
+    var cycle = d.looping && d.dur > 0 ? (t % d.dur) : t;
+    var pose = { bob: 0, hip: 0, armL: 0.3, armR: -0.3, legL: 0, legR: 0, flip: 1, spinRot: 0, xOff: 0 };
+    if (reduceMotion) {
+      pose.bob = Math.abs(Math.sin(t * 6)) * 3;
+      pose.armL = 0.55 + Math.sin(t * 5) * 0.25;
+      pose.armR = -0.55 - Math.sin(t * 5) * 0.25;
+      return pose;
+    }
+    var u, spin;
+    /* 0–0.5s: podskok, ręce w górę; 0.5–1.2: crosstep; 1.2–1.85: obrót; 1.85–koniec: machanie */
+    if (!d.looping) {
+      if (cycle < 0.5) {
+        u = cycle / 0.5;
+        pose.bob = Math.abs(Math.sin(u * Math.PI * 2)) * 14;
+        pose.armL = 2.55;
+        pose.armR = -2.55;
+        pose.hip = Math.sin(u * Math.PI * 2) * 0.12;
+      } else if (cycle < 1.2) {
+        u = (cycle - 0.5) / 0.7;
+        pose.xOff = Math.sin(u * Math.PI * 2.2) * 22;
+        pose.bob = Math.abs(Math.sin(u * Math.PI * 4)) * 8;
+        pose.hip = Math.sin(u * Math.PI * 2.2) * 0.28;
+        pose.legL = Math.sin(u * Math.PI * 2.2) * 8;
+        pose.legR = -Math.sin(u * Math.PI * 2.2) * 8;
+        pose.armL = 1.15 + Math.sin(u * Math.PI * 3) * 0.95;
+        pose.armR = -1.15 - Math.sin(u * Math.PI * 3) * 0.95;
+      } else if (cycle < 1.9) {
+        u = (cycle - 1.2) / 0.7;
+        spin = u * Math.PI * 2;
+        pose.flip = Math.cos(spin);
+        pose.bob = 6 + Math.sin(u * Math.PI) * 10;
+        pose.armL = 1.7;
+        pose.armR = -1.7;
+      } else {
+        u = (cycle - 1.9) / Math.max(0.2, (d.dur - 1.9));
+        pose.bob = Math.abs(Math.sin(u * Math.PI * 4)) * 10;
+        pose.hip = Math.sin(u * Math.PI * 3) * 0.2;
+        pose.armL = 2.5 + Math.sin(u * Math.PI * 5) * 0.45;
+        pose.armR = -2.5 - Math.cos(u * Math.PI * 5) * 0.45;
+        pose.legL = Math.sin(u * Math.PI * 4) * 5;
+        pose.legR = -Math.sin(u * Math.PI * 4) * 5;
+      }
+      return pose;
+    }
+    /* pętla zwycięstwa ~3.2 s */
+    if (cycle < 1.0) {
+      u = cycle / 1.0;
+      pose.xOff = Math.sin(u * Math.PI * 2) * 20;
+      pose.bob = Math.abs(Math.sin(u * Math.PI * 4)) * 9;
+      pose.hip = Math.sin(u * Math.PI * 2) * 0.26;
+      pose.legL = Math.sin(u * Math.PI * 2) * 8;
+      pose.legR = -Math.sin(u * Math.PI * 2) * 8;
+      pose.armL = 1.25 + Math.sin(u * Math.PI * 4) * 1.0;
+      pose.armR = -1.25 - Math.sin(u * Math.PI * 4) * 1.0;
+    } else if (cycle < 1.7) {
+      u = (cycle - 1.0) / 0.7;
+      pose.bob = Math.abs(Math.sin(u * Math.PI * 3)) * 7;
+      pose.hip = Math.sin(u * Math.PI * 2) * 0.3;
+      pose.armL = 2.55;
+      pose.armR = -0.55 - Math.sin(u * Math.PI * 3) * 0.55;
+      pose.xOff = Math.sin(u * Math.PI) * 8;
+    } else if (cycle < 2.45) {
+      u = (cycle - 1.7) / 0.75;
+      spin = u * Math.PI * 2;
+      pose.flip = Math.cos(spin);
+      pose.bob = 8 + Math.sin(u * Math.PI) * 10;
+      pose.armL = 1.7;
+      pose.armR = -1.7;
+    } else {
+      u = (cycle - 2.45) / Math.max(0.2, d.dur - 2.45);
+      pose.bob = Math.abs(Math.sin(u * Math.PI * 4)) * 12;
+      pose.armL = 2.55 + Math.sin(u * Math.PI * 4) * 0.3;
+      pose.armR = -2.55 - Math.sin(u * Math.PI * 4) * 0.3;
+      pose.hip = Math.sin(u * Math.PI * 2) * 0.15;
+    }
+    return pose;
   }
 
   function bossBox() {
@@ -1044,16 +1244,131 @@
     flyers.forEach(function (f) { drawBill(ctx, f.x, f.y, f.rot, 0.9); });
   }
 
-  function drawPlayer(ctx) {
-    var x = player.x;
-    var groundY = player.y;
-    var moving = keys.left || keys.right;
-    var walk = Math.sin(player.walk) * (moving ? 1 : 0.15);
-    var bob = (!reduceMotion && moving) ? Math.abs(Math.sin(player.walk * 1.05)) * 5.5 : 0;
-    var y = groundY - bob;
-    var flash = time < invulnUntil && Math.floor(time * 16) % 2 === 0;
+  var SUIT = '#1a2230';
+  var SUIT_HI = '#2c3a4e';
+  var SUIT_DK = '#0e141c';
+  var SKIN = '#e0a070';
+  var SKIN_DK = '#c48458';
+  var SHIRT = '#f4f2ea';
+  var TIE = '#1f9a4c';
+  var TIE_HI = '#3dff7a';
+  var SHOE = '#6b3e22';
+  var SHOE_DK = '#2a1810';
+  var INK = '#08080a';
 
-    if (coffeeUntil > time) {
+  function pix(ctx, x, y, w, h, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
+  }
+  function pixInk(ctx, x, y, w, h, fill) {
+    pix(ctx, x - 1, y - 1, w + 2, h + 2, INK);
+    pix(ctx, x, y, w, h, fill);
+  }
+
+  function drawPixelArm(ctx, ax, ay, angle, handSign) {
+    ctx.save();
+    ctx.translate(Math.round(ax), Math.round(ay));
+    ctx.rotate(angle);
+    ctx.imageSmoothingEnabled = false;
+    pix(ctx, -6, -2, 12, 40, INK);
+    pix(ctx, -4, 0, 8, 28, SUIT);
+    pix(ctx, -3, 1, 2, 22, SUIT_HI);
+    pix(ctx, -5, 26, 10, 10, INK);
+    pix(ctx, -4, 27, 8, 8, SKIN);
+    pix(ctx, -3, 28, 3, 3, SKIN_DK);
+    ctx.restore();
+  }
+
+  function drawPixelKrzysztof(ctx, x, y, pose) {
+    ctx.imageSmoothingEnabled = false;
+    var hip = pose.hip || 0;
+    var tx = x + Math.round(Math.sin(hip) * 3);
+
+    /* nogi + buty */
+    var legH = 26;
+    var lExt = Math.round(Math.max(0, pose.legL));
+    var rExt = Math.round(Math.max(0, -pose.legR) * 0 + Math.max(0, pose.legR > 0 ? 0 : -pose.legR));
+    /* lewa noga */
+    var lx = tx - 15 + Math.round(pose.legL * 0.35);
+    var ly = y - 30 - Math.round(Math.max(0, pose.legL) * 0.15);
+    pix(ctx, lx - 1, ly - 1, 14, legH + 2 + lExt, INK);
+    pix(ctx, lx, ly, 12, legH + lExt, SUIT_DK);
+    pix(ctx, lx + 1, ly + 1, 3, legH - 4, SUIT);
+    pixInk(ctx, lx - 3, y - 7, 16, 7, SHOE);
+    pix(ctx, lx - 2, y - 6, 13, 2, '#8a5630');
+    pix(ctx, lx - 3, y - 1, 16, 2, SHOE_DK);
+    /* prawa noga */
+    var rx = tx + 3 + Math.round(pose.legR * 0.35);
+    var ry = y - 30 - Math.round(Math.max(0, -pose.legR) * 0.15);
+    var rGrow = Math.round(Math.max(0, -pose.legR));
+    pix(ctx, rx - 1, ry - 1, 14, legH + 2 + rGrow, INK);
+    pix(ctx, rx, ry, 12, legH + rGrow, SUIT_DK);
+    pix(ctx, rx + 8, ry + 1, 3, legH - 4, SUIT_HI);
+    pixInk(ctx, rx - 1, y - 7, 16, 7, SHOE);
+    pix(ctx, rx, y - 6, 13, 2, '#8a5630');
+    pix(ctx, rx - 1, y - 1, 16, 2, SHOE_DK);
+
+    /* ramię dalej (lewe, za tułowiem) */
+    drawPixelArm(ctx, tx - 18, y - 70, pose.armL, -1);
+
+    /* tułów — pudełkowy, chibi, 2px kontur */
+    var tw = 40, th = 44;
+    var tTop = y - 76;
+    pix(ctx, tx - tw / 2 - 2, tTop - 2, tw + 4, th + 4, INK);
+    pix(ctx, tx - tw / 2, tTop, tw, th, SUIT);
+    pix(ctx, tx - tw / 2 + 1, tTop + 2, 5, th - 6, SUIT_HI);
+    pix(ctx, tx + tw / 2 - 6, tTop + 3, 4, th - 8, SUIT_DK);
+    /* wycięcie koszuli + kołnierz */
+    pix(ctx, tx - 7, tTop, 14, 8, SHIRT);
+    pix(ctx, tx - 6, tTop + 7, 12, 3, SHIRT);
+    /* klapy kołnierza */
+    pix(ctx, tx - 12, tTop, 6, 10, SHIRT);
+    pix(ctx, tx + 6, tTop, 6, 10, SHIRT);
+    pix(ctx, tx - 12, tTop, 6, 2, '#ffffff');
+    pix(ctx, tx + 6, tTop, 6, 2, '#ffffff');
+    /* krawat (zielony, dolarowy akcent) */
+    pix(ctx, tx - 3, tTop + 7, 6, 4, TIE);
+    pix(ctx, tx - 2, tTop + 10, 4, 22, TIE);
+    pix(ctx, tx - 3, tTop + 30, 6, 5, TIE);
+    pix(ctx, tx - 1, tTop + 11, 1, 18, TIE_HI);
+    pix(ctx, tx - 2, tTop + 31, 4, 1, '#0d5a2c');
+
+    /* głowa (szyja wchodzi pod kołnierz) */
+    drawKrzysztofSprite(ctx, imgK, tx, y - 76, drawFallbackKrzysztof);
+
+    /* kołnierz i krawat jeszcze raz na szyję */
+    pix(ctx, tx - 12, tTop, 6, 9, SHIRT);
+    pix(ctx, tx + 6, tTop, 6, 9, SHIRT);
+    pix(ctx, tx - 3, tTop + 6, 6, 5, TIE);
+    pix(ctx, tx - 2, tTop + 10, 4, 8, TIE);
+    pix(ctx, tx - 11, tTop, 5, 2, '#ffffff');
+    pix(ctx, tx + 6, tTop, 5, 2, '#ffffff');
+    /* cień kołnierza */
+    pix(ctx, tx - 12, tTop + 8, 5, 2, '#d4d0c6');
+    pix(ctx, tx + 7, tTop + 8, 5, 2, '#d4d0c6');
+
+    /* prawe ramię / łuk */
+    drawPixelArm(ctx, tx + 18, y - 70, pose.armR, 1);
+    if (hasBow) {
+      ctx.save();
+      ctx.translate(Math.round(tx + 22), Math.round(y - 60));
+      ctx.rotate(-0.08);
+      ctx.imageSmoothingEnabled = false;
+      drawBow(ctx, keys.shoot && mode === 'playing' && shotT > SHOT_COOLDOWN * 0.3);
+      ctx.restore();
+    }
+    ctx.imageSmoothingEnabled = true;
+  }
+
+  function drawPlayer(ctx) {
+    var pose = getPlayerPose();
+    var xOff = pose.xOff || 0;
+    var x = Math.round(Math.max(36, Math.min(GAME_W - 36, player.x + xOff)));
+    var groundY = player.y;
+    var y = groundY - (pose.bob || 0);
+    var flash = mode === 'playing' && time < invulnUntil && Math.floor(time * 16) % 2 === 0;
+
+    if (coffeeUntil > time && mode === 'playing') {
       var pulse = 0.55 + 0.3 * Math.sin(time * 9);
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
@@ -1076,85 +1391,21 @@
     ctx.ellipse(x, groundY + 2, 24, 6, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    var legSwing = walk * 7;
-    ctx.fillStyle = '#1a1f2a';
-    rounded(ctx, x - 14, y - 34, 11, 28 + (legSwing > 0 ? 0 : 2), 3);
-    ctx.fill();
-    rounded(ctx, x + 3, y - 34, 11, 28 - (legSwing > 0 ? 0 : 2), 3);
-    ctx.fill();
-    ctx.fillStyle = '#0b0c10';
-    rounded(ctx, x - 15, y - 8, 13, 8, 2);
-    ctx.fill();
-    rounded(ctx, x + 2, y - 8, 13, 8, 2);
-    ctx.fill();
-
-    /* głowa przed tułowiem, żeby kołnierz i krawat zasłoniły dolną część szyi */
-    drawKrzysztofSprite(ctx, imgK, x, y - 76, drawFallbackKrzysztof);
-
-    ctx.fillStyle = '#1c2740';
-    rounded(ctx, x - 18, y - 78, 36, 48, 8);
-    ctx.fill();
-    ctx.fillStyle = '#f4f4f0';
-    ctx.beginPath();
-    ctx.moveTo(x, y - 76);
-    ctx.lineTo(x - 7, y - 52);
-    ctx.lineTo(x + 7, y - 52);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = '#3dff7a';
-    ctx.beginPath();
-    ctx.moveTo(x, y - 74);
-    ctx.lineTo(x - 3.2, y - 42);
-    ctx.lineTo(x + 3.2, y - 42);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = '#0a0c0a';
-    ctx.lineWidth = 0.6;
-    ctx.beginPath();
-    ctx.moveTo(x, y - 74);
-    ctx.lineTo(x, y - 42);
-    ctx.stroke();
-
-    /* lewe ramię */
-    ctx.save();
-    ctx.translate(x - 16, y - 72);
-    ctx.rotate(-0.35 + walk * 0.25);
-    ctx.fillStyle = '#1c2740';
-    rounded(ctx, -7, 0, 10, 30, 4);
-    ctx.fill();
-    ctx.fillStyle = '#f4c7a8';
-    ctx.beginPath();
-    ctx.arc(-2, 32, 5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    /* prawe ramię / łuk */
-    ctx.save();
-    ctx.translate(x + 16, y - 72);
-    if (stage === 2) {
-      ctx.rotate(-0.15);
-      ctx.fillStyle = '#1c2740';
-      rounded(ctx, -3, 0, 10, 26, 4);
-      ctx.fill();
-      ctx.fillStyle = '#f4c7a8';
-      ctx.beginPath();
-      ctx.arc(3, 28, 5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.translate(6, 10);
-      drawBow(ctx, keys.shoot && shotT > SHOT_COOLDOWN * 0.3);
-    } else {
-      ctx.rotate(0.4 - walk * 0.25);
-      ctx.fillStyle = '#1c2740';
-      rounded(ctx, -3, 0, 10, 30, 4);
-      ctx.fill();
-      ctx.fillStyle = '#f4c7a8';
-      ctx.beginPath();
-      ctx.arc(3, 32, 5, 0, Math.PI * 2);
-      ctx.fill();
+    var cx = x, cy = y - 50;
+    ctx.translate(cx, cy);
+    var fl = pose.flip == null ? 1 : pose.flip;
+    if (fl !== 1) {
+      var sign = fl >= 0 ? 1 : -1;
+      ctx.scale(sign * Math.max(0.62, Math.abs(fl)), 1);
     }
+    if (pose.spinRot) ctx.rotate(pose.spinRot);
+    ctx.translate(-cx, -cy);
+
+    drawPixelKrzysztof(ctx, x, y, pose);
+
     ctx.restore();
 
-    if (coffeeUntil > time) {
+    if (coffeeUntil > time && mode === 'playing') {
       ctx.strokeStyle = 'rgba(255, 230, 120, 0.65)';
       ctx.lineWidth = 2;
       for (var i = 0; i < 3; i++) {
@@ -1168,7 +1419,6 @@
       }
     }
 
-    ctx.restore();
     ctx.globalAlpha = 1;
   }
 
@@ -1404,16 +1654,20 @@
 
     particles.forEach(function (p) {
       ctx.globalAlpha = Math.max(0, p.life * 3);
-      ctx.fillStyle = p.color;
-      var s = Math.max(1.5, p.r);
-      if (p.pixel !== false) {
-        ctx.imageSmoothingEnabled = false;
-        ctx.fillRect(Math.round(p.x - s / 2), Math.round(p.y - s / 2), Math.round(s), Math.round(s));
-        ctx.imageSmoothingEnabled = true;
+      if (p.bill) {
+        drawBill(ctx, p.x, p.y, p.life * 4, 0.42);
       } else {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.fillStyle = p.color;
+        var s = Math.max(1.5, p.r);
+        if (p.pixel !== false) {
+          ctx.imageSmoothingEnabled = false;
+          ctx.fillRect(Math.round(p.x - s / 2), Math.round(p.y - s / 2), Math.round(s), Math.round(s));
+          ctx.imageSmoothingEnabled = true;
+        } else {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
       ctx.globalAlpha = 1;
     });
@@ -1434,21 +1688,41 @@
     });
 
     if (mode === 'transition') {
-      var pulse = 0.18 + 0.14 * Math.abs(Math.sin(time * 10));
-      ctx.fillStyle = 'rgba(180,0,20,' + pulse + ')';
-      ctx.fillRect(0, 0, GAME_W, GAME_H);
-      ctx.fillStyle = '#fff';
-      ctx.font = fontArcade(16);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-      ctx.lineWidth = 4;
-      ctx.strokeText('ETAP 2', GAME_W / 2, GAME_H / 2 - 18);
-      ctx.fillText('ETAP 2', GAME_W / 2, GAME_H / 2 - 18);
-      ctx.font = fontTiny(26);
-      ctx.fillStyle = '#b8ff3d';
-      ctx.strokeText('Walka z bossem CTO', GAME_W / 2, GAME_H / 2 + 18);
-      ctx.fillText('Walka z bossem CTO', GAME_W / 2, GAME_H / 2 + 18);
+      ctx.lineJoin = 'round';
+      if (transPhase === 'dance') {
+        var glow = 0.10 + 0.08 * Math.abs(Math.sin(time * 7));
+        ctx.fillStyle = 'rgba(20, 80, 40,' + glow + ')';
+        ctx.fillRect(0, 0, GAME_W, GAME_H);
+        ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+        ctx.lineWidth = 4;
+        ctx.font = fontArcade(14);
+        ctx.fillStyle = '#b8ff3d';
+        ctx.strokeText('1000 $', GAME_W / 2, 210);
+        ctx.shadowColor = 'rgba(184,255,61,0.9)';
+        ctx.shadowBlur = 10;
+        ctx.fillText('1000 $', GAME_W / 2, 210);
+        ctx.shadowBlur = 0;
+        ctx.font = fontTiny(30);
+        ctx.fillStyle = '#3dff7a';
+        ctx.strokeText('Budżet zebrany!', GAME_W / 2, 248);
+        ctx.fillText('Budżet zebrany!', GAME_W / 2, 248);
+      } else {
+        var pulse = 0.18 + 0.14 * Math.abs(Math.sin(time * 10));
+        ctx.fillStyle = 'rgba(180,0,20,' + pulse + ')';
+        ctx.fillRect(0, 0, GAME_W, GAME_H);
+        ctx.fillStyle = '#fff';
+        ctx.font = fontArcade(16);
+        ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+        ctx.lineWidth = 4;
+        ctx.strokeText('ETAP 2', GAME_W / 2, GAME_H / 2 - 18);
+        ctx.fillText('ETAP 2', GAME_W / 2, GAME_H / 2 - 18);
+        ctx.font = fontTiny(26);
+        ctx.fillStyle = '#b8ff3d';
+        ctx.strokeText('Walka z bossem CTO', GAME_W / 2, GAME_H / 2 + 18);
+        ctx.fillText('Walka z bossem CTO', GAME_W / 2, GAME_H / 2 + 18);
+      }
     }
     ctx.restore();
   }
@@ -1479,9 +1753,7 @@
       return;
     }
     if (mode === 'playing' || mode === 'transition') update(dt);
-    else if (player) {
-      /* delikatny bezruch na ekranie startowym — tło i postać */
-    }
+    else if (mode === 'victory') updateVictory(dt);
     draw();
   }
 
@@ -1577,11 +1849,10 @@
   window.__graDebug = {
     etap2: startStage2Direct,
     wygrana: function () {
-      if (mode === 'start' || !player) { resetGame(); hideOverlays(); mode = 'playing'; }
+      if (mode === 'start' || !player) { resetGame(); hideOverlays(); }
       budget = Math.max(budget, BUDGET_GOAL);
-      if (!boss) startTransition();
-      boss.hp = 0;
-      mode = 'playing';
+      if (!boss) startTransition({ skipDance: true });
+      if (boss) boss.hp = 0;
       stage = 2;
       endGame(true);
     },
@@ -1589,6 +1860,11 @@
       if (mode === 'start' || !player) { resetGame(); hideOverlays(); mode = 'playing'; }
       lives = 0;
       endGame(false);
+    },
+    taniec: function () {
+      if (mode === 'start' || !player) { resetGame(); hideOverlays(); }
+      budget = Math.max(budget, BUDGET_GOAL);
+      startTransition();
     },
     budzet: function (n) { budget = n; updateHud(); },
     lot: function () {
@@ -1601,7 +1877,9 @@
       return {
         mode: mode, stage: stage, budget: budget, score: score,
         lives: lives, bossHp: boss ? boss.hp : null, paused: paused,
-        safeStack: safeStackValue(), flyers: flyers.length
+        safeStack: safeStackValue(), flyers: flyers.length,
+        transPhase: transPhase, hasBow: hasBow,
+        dance: dance ? { kind: dance.kind, t: dance.t, looping: dance.looping } : null
       };
     }
   };

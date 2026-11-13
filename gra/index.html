@@ -157,6 +157,20 @@
     .app { padding: 0.4rem 0.45rem 0.35rem; padding-right: 3.8rem; }
     .hud { font-size: 1.02rem; gap: 0.2rem 0.5rem; }
   }
+  #overlay-win {
+    align-items: flex-start;
+    padding-top: 0.45rem;
+    background: linear-gradient(180deg, rgba(4, 6, 18, 0.58) 0%, rgba(4, 6, 18, 0.16) 38%, rgba(4, 6, 18, 0.06) 100%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  #overlay-win .card {
+    max-width: 420px;
+    padding: 0.9rem 1.1rem 1rem;
+  }
+  #overlay-win .card h1 { margin-bottom: 0.35rem; }
+  #overlay-win .lead { margin-bottom: 0.35rem; }
+  #overlay-win .result { margin: 0.15rem 0 0.8rem; }
   @media (prefers-reduced-motion: reduce) {
     .btn { transition: none; }
     .btn:hover { transform: none; }
