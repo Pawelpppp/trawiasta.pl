@@ -44,6 +44,7 @@
 
   var imgK = null;
   var imgCto = null;
+  var imgBg = null;
   function loadImg(src, setter) {
     var im = new Image();
     im.onload = function () { setter(im); };
@@ -52,6 +53,7 @@
   }
   loadImg('/gra/krzysztof.png', function (im) { imgK = im; });
   loadImg('/gra/cto.png', function (im) { imgCto = im; });
+  loadImg('/gra/tlo.jpg', function (im) { imgBg = im; });
 
   /* ---------- dźwięk (Web Audio, retro) ---------- */
   var audio = {
@@ -1075,7 +1077,7 @@
     ctx.fillText('CTO  ' + boss.hp + ' / ' + BOSS_HP_MAX + ' HP', x, by - 4);
   }
 
-  function drawBg(ctx) {
+  function drawBgFallback(ctx) {
     var g = ctx.createLinearGradient(0, 0, 0, GAME_H);
     g.addColorStop(0, '#101a14');
     g.addColorStop(0.5, '#0c140f');
@@ -1093,7 +1095,6 @@
       ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(GAME_W, i); ctx.stroke();
     }
 
-    /* okna biurowe w tle */
     ctx.fillStyle = 'rgba(20, 28, 40, 0.55)';
     rounded(ctx, 24, 40, 70, 90, 6); ctx.fill();
     rounded(ctx, GAME_W - 94, 40, 70, 90, 6); ctx.fill();
@@ -1114,6 +1115,27 @@
     ctx.moveTo(0, GAME_H - 36);
     ctx.lineTo(GAME_W, GAME_H - 36);
     ctx.stroke();
+  }
+
+  function drawBg(ctx) {
+    var iw = imgBg && (imgBg.naturalWidth || imgBg.width);
+    var ih = imgBg && (imgBg.naturalHeight || imgBg.height);
+    if (!iw || !ih) {
+      drawBgFallback(ctx);
+      return;
+    }
+    /* cover: na pionowym płótnie kadrujemy boki, obraz wyśrodkowany */
+    var scale = Math.max(GAME_W / iw, GAME_H / ih);
+    var sw = GAME_W / scale;
+    var sh = GAME_H / scale;
+    var sx = (iw - sw) / 2;
+    var sy = (ih - sh) / 2;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(imgBg, sx, sy, sw, sh, 0, 0, GAME_W, GAME_H);
+    ctx.imageSmoothingEnabled = true;
+    /* lekkie przyciemnienie, żeby spadające elementy i etykiety były czytelne */
+    ctx.fillStyle = 'rgba(6, 8, 14, 0.32)';
+    ctx.fillRect(0, 0, GAME_W, GAME_H);
   }
 
   function draw() {
