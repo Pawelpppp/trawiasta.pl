@@ -57,7 +57,7 @@
     im.src = src;
   }
   loadImg('/gra/krzysztof.png', function (im) { imgK = im; });
-  loadImg('/gra/cto.png', function (im) { imgCto = im; });
+  loadImg('/gra/sales-director.png', function (im) { imgCto = im; });
   loadImg('/gra/tlo.jpg', function (im) { imgBg = im; });
 
   /* ---------- dźwięk (Web Audio, retro) ---------- */
@@ -293,13 +293,13 @@
     if (mode === 'transition' && transPhase === 'dance') {
       hudStage.textContent = pendingBoss === 4 ? 'Etap 3 ukończony!' : 'Etap 1 ukończony!';
     } else if (mode === 'transition' && transPhase && transPhase.indexOf('steal') === 0) {
-      hudStage.textContent = 'Etap 2 — CTO kradnie budżet!';
+      hudStage.textContent = 'Etap 2 — kradnie budżet!';
     } else if (stage === 4 || (mode === 'transition' && pendingBoss === 4)) {
-      hudStage.textContent = 'Etap 4 — CTO Mech';
+      hudStage.textContent = 'Etap 4 — Sales Director';
     } else if (stage === 3) {
       hudStage.textContent = 'Etap 3 — Zbierz 3000 $';
     } else if (stage === 2 || (mode === 'transition' && pendingBoss === 2)) {
-      hudStage.textContent = 'Etap 2 — Boss CTO';
+      hudStage.textContent = 'Etap 2 — Sales Director';
     } else {
       hudStage.textContent = 'Etap 1';
     }
@@ -1977,7 +1977,7 @@
     ctx.font = fontTiny(16);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    var title = boss.kind === 'mech' ? 'CTO MECH  ' : 'CTO  ';
+    var title = 'SALES DIRECTOR  ';
     ctx.fillText(title + boss.hp + ' / ' + hpMax + ' HP', x, by - 4);
   }
 
@@ -2231,10 +2231,12 @@
         if (transPhase !== 'steal-fly') {
           ctx.strokeStyle = 'rgba(0,0,0,0.65)';
           ctx.lineWidth = 4;
-          ctx.font = fontTiny(30);
+          ctx.font = fontTiny(28);
           ctx.fillStyle = '#ff6b6b';
-          ctx.strokeText('CTO zabrała cały budżet!', GAME_W / 2, 220);
-          ctx.fillText('CTO zabrała cały budżet!', GAME_W / 2, 220);
+          ctx.strokeText('Sales Director', GAME_W / 2, 204);
+          ctx.fillText('Sales Director', GAME_W / 2, 204);
+          ctx.strokeText('zabrała cały budżet!', GAME_W / 2, 236);
+          ctx.fillText('zabrała cały budżet!', GAME_W / 2, 236);
         }
       } else {
         var pulse = 0.18 + 0.14 * Math.abs(Math.sin(time * 10));
@@ -2245,7 +2247,7 @@
         ctx.strokeStyle = 'rgba(0,0,0,0.55)';
         ctx.lineWidth = 4;
         var etap = pendingBoss === 4 ? 'ETAP 4' : 'ETAP 2';
-        var sub = pendingBoss === 4 ? 'CTO w mechucie' : 'Walka z CTO';
+        var sub = pendingBoss === 4 ? 'Sales Director w mechucie' : 'Walka z Sales Director';
         ctx.strokeText(etap, GAME_W / 2, GAME_H / 2 - 18);
         ctx.fillText(etap, GAME_W / 2, GAME_H / 2 - 18);
         ctx.font = fontTiny(26);

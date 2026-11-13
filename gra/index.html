@@ -6,7 +6,7 @@
 <title>Gra | trawiasta.pl</title>
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#0a0c0a">
-<meta name="description" content="Krzysztof kontra CTO — gra dostępna po zalogowaniu.">
+<meta name="description" content="Krzysztof kontra Sales Director — gra dostępna po zalogowaniu.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -52,6 +52,7 @@
     letter-spacing: 0.03em; text-shadow: 0 0 8px rgba(61, 255, 122, 0.35);
   }
   .hud span { white-space: nowrap; opacity: 0.95; }
+  #hud-stage { white-space: normal; }
   .hud b { color: var(--accent); font-weight: 400; }
   .hearts { letter-spacing: 0.08em; color: #ff5a6a; }
   .hearts .off { opacity: 0.22; }
@@ -107,7 +108,7 @@
   }
   .card h1 {
     font-family: "Press Start 2P", monospace;
-    font-size: clamp(0.72rem, 2.7vw, 1.05rem); font-weight: 400; letter-spacing: 0.04em; line-height: 1.65;
+    font-size: clamp(0.62rem, 2.5vw, 0.95rem); font-weight: 400; letter-spacing: 0.04em; line-height: 1.65;
     margin-bottom: 0.7rem; color: var(--accent);
     text-shadow: 0 0 8px rgba(61, 255, 122, 0.9), 0 0 18px rgba(61, 255, 122, 0.45);
   }
@@ -209,18 +210,18 @@
   </header>
 
   <div class="stage" id="stage">
-    <canvas id="game" width="480" height="800" aria-label="Pole gry Krzysztof kontra CTO"></canvas>
+    <canvas id="game" width="480" height="800" aria-label="Pole gry Krzysztof kontra Sales Director"></canvas>
 
     <div class="overlay" id="overlay-start">
       <div class="card">
-        <h1>Krzysztof kontra CTO</h1>
+        <h1>Krzysztof kontra<br>Sales Director</h1>
         <p class="lead">Zbierz budżet i pokonaj bossa — dwa razy.</p>
         <ul>
           <li><strong>Ruch:</strong> strzałki lub A/D (na telefonie przyciski). Strzał: spacja (10 $, zawsze można).</li>
           <li><strong>Etap 1:</strong> łap banknoty (+100 $) i kawę (+50 pkt, 5 s szybkości Krzysztofa i stałe przyspieszenie gry). Unikaj: L4, Wypowiedzenie, Cięcia Kosztów — 3 życia.</li>
-          <li><strong>Etap 2:</strong> po 1000 $ walka z CTO-ośmiornicą. Pokonana CTO ukradnie cały budżet z sejfu.</li>
+          <li><strong>Etap 2:</strong> po 1000 $ walka z ośmiornicą Sales Director. Pokonana ukradnie cały budżet z sejfu.</li>
           <li><strong>Etap 3:</strong> zbierz ponownie, tym razem 3000 $ (trudniej). Na start +1 życie (maks. 3).</li>
-          <li><strong>Etap 4:</strong> CTO wraca w mechucie. Pokonaj ją, żeby wygrać.</li>
+          <li><strong>Etap 4:</strong> Sales Director wraca w mechucie. Pokonaj ją, żeby wygrać.</li>
         </ul>
         <button type="button" class="btn" id="btn-play">Graj</button>
       </div>
@@ -236,7 +237,7 @@
     <div class="overlay" id="overlay-win" hidden>
       <div class="card">
         <h1>Gratulacje, Krzysztofie!</h1>
-        <p class="lead" id="win-lead">Pokonałeś CTO.</p>
+        <p class="lead" id="win-lead">Pokonałeś Sales Director.</p>
         <p class="result">Wynik końcowy <span class="big" id="win-score">0</span><span id="win-meta"></span></p>
         <button type="button" class="btn" id="btn-again-win">Zagraj ponownie</button>
       </div>
