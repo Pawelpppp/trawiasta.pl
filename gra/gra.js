@@ -193,6 +193,13 @@
   var transitionT = 0;
   var lastTs = 0;
   var raf = 0;
+  var shakeT = 0;
+  var coffeeSparkT = 0;
+  var reduceMotion = false;
+  try { reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+  var MAX_PARTICLES = (typeof window !== 'undefined' && (('ontouchstart' in window) || Math.min(screen.width, screen.height) <= 700)) ? 48 : 96;
+  function fontArcade(px) { return px + 'px "Press Start 2P", monospace'; }
+  function fontTiny(px) { return px + 'px VT323, monospace'; }
 
   function fmtMoney(n) { return Math.max(0, Math.floor(n)) + ' $'; }
 
@@ -213,6 +220,8 @@
     particles = [];
     boss = null;
     transitionT = 0;
+    shakeT = 0;
+    coffeeSparkT = 0;
     player = {
       x: GAME_W / 2,
       y: GAME_H - 28,
@@ -259,18 +268,27 @@
   }
 
   function addFloat(x, y, text, color) {
-    floats.push({ x: x, y: y, text: text, color: color || '#3dff7a', life: 0.9 });
+    floats.push({ x: x, y: y, text: text, color: color || '#3dff7a', life: 1.05, maxLife: 1.05 });
+  }
+  function trimParticles() {
+    if (particles.length > MAX_PARTICLES) particles.splice(0, particles.length - MAX_PARTICLES);
   }
   function burst(x, y, color, n) {
     n = n || 8;
+    if (MAX_PARTICLES <= 48) n = Math.ceil(n * 0.6);
     for (var i = 0; i < n; i++) {
       var a = Math.random() * Math.PI * 2;
-      var s = 40 + Math.random() * 120;
+      var s = 40 + Math.random() * 140;
       particles.push({
         x: x, y: y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
-        color: color, life: 0.35 + Math.random() * 0.25, r: 1.5 + Math.random() * 2
+        color: color, life: 0.35 + Math.random() * 0.3, r: 2 + Math.random() * 3,
+        pixel: true, grav: 90
       });
     }
+    trimParticles();
+  }
+  function startShake() {
+    if (!reduceMotion) shakeT = 0.2;
   }
 
   function playerSpeed() {
@@ -364,8 +382,9 @@
     lives -= 1;
     invulnUntil = time + INVULN;
     play('hit');
+    startShake();
     addFloat(player.x, player.y - 110, '−1 życie', '#ff6b6b');
-    burst(player.x, player.y - 50, '#ff6b6b', 12);
+    burst(player.x, player.y - 50, '#ff6b6b', 14);
     if (lives <= 0) {
       lives = 0;
       endGame(false);
@@ -398,8 +417,11 @@
     if (!boss) return;
     boss.hp = Math.max(0, boss.hp - BOSS_HIT);
     play('bossHit');
-    addFloat(boss.x, boss.y - 70, '−10 HP', '#b8ff3d');
-    burst(boss.x, boss.y, '#d4a0ff', 14);
+    startShake();
+    boss.flashUntil = time + 0.16;
+    addFloat(boss.x, boss.y - 70, '-10 HP', '#b8ff3d');
+    burst(boss.x, boss.y, '#c86bff', 12);
+    burst(boss.x, boss.y, '#ff3a5a', 12);
     score += 100;
     updateHud();
     if (boss.hp <= 0) endGame(true);
@@ -409,6 +431,7 @@
   function update(dt) {
     time += dt;
     if (shotT > 0) shotT -= dt;
+    if (shakeT > 0) shakeT = Math.max(0, shakeT - dt);
 
     var spd = playerSpeed();
     var dir = (keys.left ? -1 : 0) + (keys.right ? 1 : 0);
@@ -474,16 +497,18 @@
         budget += 100;
         score += 100;
         play('collect');
-        addFloat(it.x, it.y, '+100 $', '#3dff7a');
-        burst(it.x, it.y, '#3dff7a', 8);
+        addFloat(player.x, player.y - 112, '+100$', '#3dff7a');
+        burst(it.x, it.y, '#3dff7a', 12);
+        burst(it.x, it.y, '#b8ff3d', 6);
         items.splice(i, 1);
         updateHud();
       } else if (it.kind === 'coffee') {
         score += 50;
         coffeeUntil = time + COFFEE_TIME;
         play('coffee');
-        addFloat(it.x, it.y, '+50 pkt', '#f3d19a');
-        burst(it.x, it.y, '#c48a4a', 8);
+        addFloat(player.x, player.y - 112, '+50', '#ffd76a');
+        burst(it.x, it.y, '#ffd76a', 14);
+        burst(it.x, it.y, '#fff3c0', 8);
         items.splice(i, 1);
         updateHud();
       } else if (it.kind === 'hazard') {
@@ -505,9 +530,23 @@
       }
     }
 
+    if (coffeeUntil > time) {
+      coffeeSparkT -= dt;
+      if (coffeeSparkT <= 0 && particles.length < MAX_PARTICLES) {
+        coffeeSparkT = 0.07;
+        particles.push({
+          x: player.x + rand(-22, 22), y: player.y - rand(20, 95),
+          vx: rand(-16, 16), vy: rand(-50, -10),
+          color: Math.random() < 0.5 ? '#ffd76a' : '#fff3c0',
+          life: 0.4 + Math.random() * 0.25, r: 2 + Math.random() * 2,
+          pixel: true, grav: -10
+        });
+      }
+    }
+
     for (i = floats.length - 1; i >= 0; i--) {
       floats[i].life -= dt;
-      floats[i].y -= 40 * dt;
+      floats[i].y -= 55 * dt;
       if (floats[i].life <= 0) floats.splice(i, 1);
     }
     for (i = particles.length - 1; i >= 0; i--) {
@@ -515,7 +554,7 @@
       p.life -= dt;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
-      p.vy += 80 * dt;
+      p.vy += (p.grav != null ? p.grav : 90) * dt;
       if (p.life <= 0) particles.splice(i, 1);
     }
   }
@@ -723,7 +762,7 @@
     rounded(ctx, -16, -6, 32, 12, 2);
     ctx.stroke();
     ctx.fillStyle = '#0a3d20';
-    ctx.font = 'bold 12px Outfit, system-ui, sans-serif';
+    ctx.font = fontArcade(8);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('$', 0, 1);
@@ -775,12 +814,11 @@
     var label = it.label;
     var parts = label.split(' ');
     if (parts.length > 1 && label.length > 8) {
-      ctx.font = 'bold 9px Outfit, system-ui, sans-serif';
+      ctx.font = fontTiny(15);
       ctx.fillText(parts[0], 0, -6);
       ctx.fillText(parts.slice(1).join(' '), 0, 7);
     } else {
-      var size = label.length > 8 ? 9 : 11;
-      ctx.font = 'bold ' + size + 'px Outfit, system-ui, sans-serif';
+      ctx.font = fontTiny(label.length > 8 ? 15 : 17);
       ctx.fillText(label, 0, 1);
     }
     ctx.restore();
@@ -813,34 +851,52 @@
       drawBill(ctx, sx + ox, baseY - i * 5.2, 0.08 * ((i % 2) ? 1 : -1), 0.85);
     }
     ctx.save();
-    ctx.font = 'bold 11px Outfit, system-ui, sans-serif';
+    ctx.font = fontTiny(16);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillStyle = 'rgba(10,12,10,0.65)';
+    ctx.fillStyle = 'rgba(10,12,10,0.7)';
     ctx.fillText('Budżet', sx + 1, baseY - n * 5.2 - 16);
     ctx.fillStyle = '#b8ff3d';
     ctx.fillText('Budżet', sx, baseY - n * 5.2 - 17);
     ctx.fillStyle = '#3dff7a';
-    ctx.font = 'bold 12px Outfit, system-ui, sans-serif';
+    ctx.font = fontTiny(18);
     ctx.fillText(fmtMoney(budget), sx, baseY - n * 5.2 - 4);
     ctx.restore();
   }
 
   function drawPlayer(ctx) {
     var x = player.x;
-    var y = player.y;
-    var walk = Math.sin(player.walk) * (keys.left || keys.right ? 1 : 0.15);
+    var groundY = player.y;
+    var moving = keys.left || keys.right;
+    var walk = Math.sin(player.walk) * (moving ? 1 : 0.15);
+    var bob = (!reduceMotion && moving) ? Math.abs(Math.sin(player.walk * 1.05)) * 5.5 : 0;
+    var y = groundY - bob;
     var flash = time < invulnUntil && Math.floor(time * 16) % 2 === 0;
 
     /* stos budżetu za postacią, żeby nie zasłaniał łuku */
     drawBudgetStack(ctx);
+
+    if (coffeeUntil > time) {
+      var pulse = 0.55 + 0.3 * Math.sin(time * 9);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      var grd = ctx.createRadialGradient(x, y - 50, 6, x, y - 50, 62);
+      grd.addColorStop(0, 'rgba(255, 230, 100, ' + (0.42 * pulse) + ')');
+      grd.addColorStop(0.45, 'rgba(255, 200, 40, ' + (0.2 * pulse) + ')');
+      grd.addColorStop(1, 'rgba(255, 170, 0, 0)');
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.ellipse(x, y - 50, 46, 62, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
 
     if (flash) ctx.globalAlpha = 0.4;
 
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.28)';
     ctx.beginPath();
-    ctx.ellipse(x, y + 2, 24, 6, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, groundY + 2, 24, 6, 0, 0, Math.PI * 2);
     ctx.fill();
 
     var legSwing = walk * 7;
@@ -986,7 +1042,7 @@
     rounded(ctx, -7, -18, 14, 12, 2);
     ctx.fill();
     ctx.fillStyle = '#0a3d20';
-    ctx.font = 'bold 10px Outfit, system-ui, sans-serif';
+    ctx.font = fontArcade(8);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('$', 0, -12);
@@ -996,6 +1052,7 @@
   function drawBoss(ctx) {
     if (!boss) return;
     var x = boss.x, y = boss.y, t = boss.t;
+    var flashing = boss.flashUntil && boss.flashUntil > time;
     boss.tips = [];
     /* macki (za ciałem) — rozchodzą się na boki i falują */
     var i, s, k, px, py, pts;
@@ -1004,8 +1061,8 @@
       var attachX = x + spread * 36;
       var attachY = y + 36;
       var len = 100 + Math.abs(spread) * 28 + (i % 2) * 14;
-      var wave1 = Math.sin(t * 2.15 + i * 0.85);
-      var wave2 = Math.sin(t * 2.6 + i * 1.1 + 1);
+      var wave1 = Math.sin(t * 1.85 + i * 0.85);
+      var wave2 = Math.sin(t * 2.15 + i * 1.05 + 0.7);
       pts = [];
       ctx.beginPath();
       ctx.moveTo(x + spread * 18, y + 18);
@@ -1017,12 +1074,12 @@
         ctx.lineTo(px, py);
         pts.push({ x: px, y: py });
       }
-      ctx.strokeStyle = i % 2 ? '#6b2f9a' : '#4e1f78';
+      ctx.strokeStyle = flashing ? (i % 2 ? '#ff3a55' : '#c01830') : (i % 2 ? '#6b2f9a' : '#4e1f78');
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.lineWidth = 16 - Math.abs(spread) * 3;
       ctx.stroke();
-      ctx.strokeStyle = 'rgba(210,160,255,0.28)';
+      ctx.strokeStyle = flashing ? 'rgba(255,120,140,0.45)' : 'rgba(210,160,255,0.28)';
       ctx.lineWidth = 5;
       ctx.stroke();
       boss.tips.push({ x: pts[pts.length - 1].x, y: pts[pts.length - 1].y });
@@ -1035,23 +1092,29 @@
     }
 
     /* płaszcz ośmiornicy */
-    ctx.fillStyle = '#6e33a8';
+    ctx.fillStyle = flashing ? '#e03858' : '#6e33a8';
     ctx.beginPath();
     ctx.ellipse(x, y + 28, 78, 48, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#8a4cc4';
+    ctx.fillStyle = flashing ? '#ff5a72' : '#8a4cc4';
     ctx.beginPath();
     ctx.ellipse(x, y + 10, 70, 46, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#5a2488';
+    ctx.fillStyle = flashing ? '#b02038' : '#5a2488';
     ctx.beginPath();
     ctx.ellipse(x, y + 36, 50, 22, 0, 0, Math.PI * 2);
     ctx.fill();
     /* błysk na ciele */
-    ctx.fillStyle = 'rgba(255,220,255,0.18)';
+    ctx.fillStyle = flashing ? 'rgba(255,220,220,0.45)' : 'rgba(255,220,255,0.18)';
     ctx.beginPath();
     ctx.ellipse(x - 22, y, 18, 12, -0.4, 0, Math.PI * 2);
     ctx.fill();
+    if (flashing) {
+      ctx.fillStyle = 'rgba(255, 40, 60, 0.32)';
+      ctx.beginPath();
+      ctx.ellipse(x, y + 8, 84, 72, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     drawHead(ctx, imgCto, x, y - 28, 36, drawFallbackCto);
 
@@ -1071,7 +1134,7 @@
       ctx.fill();
     }
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 11px Outfit, system-ui, sans-serif';
+    ctx.font = fontTiny(16);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
     ctx.fillText('CTO  ' + boss.hp + ' / ' + BOSS_HP_MAX + ' HP', x, by - 4);
@@ -1139,6 +1202,15 @@
   }
 
   function draw() {
+    var ox = 0, oy = 0;
+    if (shakeT > 0 && !reduceMotion) {
+      var mag = 6 * (shakeT / 0.2);
+      ox = (Math.random() * 2 - 1) * mag;
+      oy = (Math.random() * 2 - 1) * mag;
+    }
+    ctx.save();
+    ctx.translate(ox, oy);
+
     drawBg(ctx);
     items.forEach(function (it) {
       if (it.kind === 'bill') drawBill(ctx, it.x, it.y, it.rot);
@@ -1152,17 +1224,30 @@
     particles.forEach(function (p) {
       ctx.globalAlpha = Math.max(0, p.life * 3);
       ctx.fillStyle = p.color;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-      ctx.fill();
+      var s = Math.max(1.5, p.r);
+      if (p.pixel !== false) {
+        ctx.imageSmoothingEnabled = false;
+        ctx.fillRect(Math.round(p.x - s / 2), Math.round(p.y - s / 2), Math.round(s), Math.round(s));
+        ctx.imageSmoothingEnabled = true;
+      } else {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.globalAlpha = 1;
     });
     floats.forEach(function (f) {
-      ctx.globalAlpha = Math.max(0, Math.min(1, f.life * 2));
-      ctx.fillStyle = f.color;
-      ctx.font = 'bold 14px Outfit, system-ui, sans-serif';
+      var a = Math.max(0, Math.min(1, f.life * 2));
+      ctx.globalAlpha = a;
+      var ascii = /^[\x20-\x7e+$]+$/.test(f.text);
+      ctx.font = ascii ? fontArcade(8) : fontTiny(18);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+      ctx.lineWidth = ascii ? 3 : 3;
+      ctx.strokeText(f.text, f.x, f.y);
+      ctx.fillStyle = f.color;
       ctx.fillText(f.text, f.x, f.y);
       ctx.globalAlpha = 1;
     });
@@ -1172,14 +1257,19 @@
       ctx.fillStyle = 'rgba(180,0,20,' + pulse + ')';
       ctx.fillRect(0, 0, GAME_W, GAME_H);
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold 28px Outfit, system-ui, sans-serif';
+      ctx.font = fontArcade(16);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
+      ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+      ctx.lineWidth = 4;
+      ctx.strokeText('ETAP 2', GAME_W / 2, GAME_H / 2 - 18);
       ctx.fillText('ETAP 2', GAME_W / 2, GAME_H / 2 - 18);
-      ctx.font = 'bold 18px Outfit, system-ui, sans-serif';
+      ctx.font = fontTiny(26);
       ctx.fillStyle = '#b8ff3d';
-      ctx.fillText('Walka z bossem CTO', GAME_W / 2, GAME_H / 2 + 16);
+      ctx.strokeText('Walka z bossem CTO', GAME_W / 2, GAME_H / 2 + 18);
+      ctx.fillText('Walka z bossem CTO', GAME_W / 2, GAME_H / 2 + 18);
     }
+    ctx.restore();
   }
 
   /* ---------- pętla / skalowanie ---------- */
@@ -1328,13 +1418,25 @@
     }
   };
 
-  /* start: tło na ekranie startowym z postacią */
+  /* start: czekamy na fonty, potem pierwsza klatka i pętla */
   resetGame();
   updateHud();
   hud.hidden = true;
   appEl.classList.remove('playing');
   showOverlay(ovStart);
-  fit();
-  raf = requestAnimationFrame(loop);
   window.addEventListener('load', fit);
+
+  function boot() {
+    if (raf) return;
+    fit();
+    raf = requestAnimationFrame(loop);
+  }
+  var fontsOk = false;
+  function onFonts() { fontsOk = true; boot(); }
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(onFonts).catch(onFonts);
+  } else {
+    onFonts();
+  }
+  setTimeout(function () { if (!fontsOk) boot(); }, 2500);
 })();
