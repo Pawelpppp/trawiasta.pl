@@ -296,7 +296,7 @@
   }
 
   function playerHitbox() {
-    return { x: player.x - 20, y: player.y - 90, w: 40, h: 88 };
+    return { x: player.x - 22, y: player.y - 138, w: 44, h: 136 };
   }
 
   function aabb(a, b) {
@@ -745,6 +745,23 @@
     fallback(ctx, cx, cy, r);
   }
 
+  /* Wycinka Krzysztofa (już z przezroczystym tłem) — bez owalnego przycięcia, ostre piksele. */
+  function drawKrzysztofSprite(ctx, img, cx, collarY, fallback) {
+    var iw = img && (img.naturalWidth || img.width);
+    var ih = img && (img.naturalHeight || img.height);
+    if (!iw || !ih) {
+      fallback(ctx, cx, collarY - 20, 22);
+      return;
+    }
+    var dh = 78;
+    var dw = dh * (iw / ih);
+    var dx = Math.round(cx - dw / 2);
+    var dy = Math.round(collarY - dh * 0.805);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, dx, dy, Math.round(dw), Math.round(dh));
+    ctx.imageSmoothingEnabled = true;
+  }
+
   function drawBill(ctx, x, y, rot, scale) {
     scale = scale || 1;
     ctx.save();
@@ -911,6 +928,9 @@
     rounded(ctx, x + 2, y - 8, 13, 8, 2);
     ctx.fill();
 
+    /* głowa przed tułowiem, żeby kołnierz i krawat zasłoniły dolną część szyi */
+    drawKrzysztofSprite(ctx, imgK, x, y - 76, drawFallbackKrzysztof);
+
     ctx.fillStyle = '#1c2740';
     rounded(ctx, x - 18, y - 78, 36, 48, 8);
     ctx.fill();
@@ -988,7 +1008,6 @@
       }
     }
 
-    drawHead(ctx, imgK, x, y - 96, 22, drawFallbackKrzysztof);
     ctx.restore();
     ctx.globalAlpha = 1;
   }
