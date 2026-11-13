@@ -10,7 +10,11 @@
   var GAME_W = 480;
   var GAME_H = 800;
   var BUDGET_GOAL = 1000;
+  var BUDGET_GOAL_3 = 3000;
   var BOSS_HP_MAX = 100;
+  var BOSS2_HP_MAX = 150;
+  var COFFEE_PACE = 0.08;
+  var COFFEE_PACE_MAX = 10;
   var BOSS_HIT = 10;
   var SHOT_COST = 10;
   var SHOT_COOLDOWN = 0.28;
@@ -28,6 +32,7 @@
   var hudScore = document.getElementById('hud-score');
   var hudStage = document.getElementById('hud-stage');
   var hudCoffee = document.getElementById('hud-coffee');
+  var hudPace = document.getElementById('hud-pace');
   var ovStart = document.getElementById('overlay-start');
   var ovPause = document.getElementById('overlay-pause');
   var ovWin = document.getElementById('overlay-win');
@@ -156,6 +161,12 @@
     } else if (name === 'safe') {
       tone(980, 'square', t, 0.06, 0.12);
       tone(1318, 'square', t + 0.05, 0.1, 0.13);
+    } else if (name === 'steal') {
+      tone(220, 'sawtooth', t, 0.16, 0.16, 110);
+      tone(160, 'square', t + 0.1, 0.2, 0.14, 90);
+    } else if (name === 'laser') {
+      tone(740, 'sawtooth', t, 0.18, 0.1, 200);
+      noise(t, 0.16, 0.08, 1800);
     }
   }
 
@@ -192,6 +203,10 @@
   var floats = [];
   var particles = [];
   var flyers = [];
+  var projectiles = [];
+  var coffeePace = 0;
+  var pendingBoss = 2;
+  var stealLootT = 0;
   var safeInFlight = 0;
   var safeSx = 1, safeSy = 1, safeVx = 0, safeVy = 0, safeFlash = 0;
   var player = null;
@@ -229,6 +244,10 @@
     floats = [];
     particles = [];
     flyers = [];
+    projectiles = [];
+    coffeePace = 0;
+    pendingBoss = 2;
+    stealLootT = 0;
     safeInFlight = 0;
     safeSx = 1; safeSy = 1; safeVx = 0; safeVy = 0; safeFlash = 0;
     boss = null;
@@ -271,14 +290,31 @@
     hudLives.setAttribute('aria-label', 'Życia: ' + lives + ' z ' + LIVES_MAX);
     hudBudget.textContent = fmtMoney(budget);
     hudScore.textContent = String(score);
-    if (mode === 'transition' && transPhase === 'dance') hudStage.textContent = 'Etap 1 ukończony!';
-    else if (stage === 2 || mode === 'transition') hudStage.textContent = 'Etap 2 — Boss CTO';
-    else hudStage.textContent = 'Etap 1';
+    if (mode === 'transition' && transPhase === 'dance') {
+      hudStage.textContent = pendingBoss === 4 ? 'Etap 3 ukończony!' : 'Etap 1 ukończony!';
+    } else if (mode === 'transition' && transPhase && transPhase.indexOf('steal') === 0) {
+      hudStage.textContent = 'Etap 2 — CTO kradnie budżet!';
+    } else if (stage === 4 || (mode === 'transition' && pendingBoss === 4)) {
+      hudStage.textContent = 'Etap 4 — CTO Mech';
+    } else if (stage === 3) {
+      hudStage.textContent = 'Etap 3 — Zbierz 3000 $';
+    } else if (stage === 2 || (mode === 'transition' && pendingBoss === 2)) {
+      hudStage.textContent = 'Etap 2 — Boss CTO';
+    } else {
+      hudStage.textContent = 'Etap 1';
+    }
     if (coffeeUntil > time) {
       hudCoffee.hidden = false;
       hudCoffee.textContent = 'Kawa: ' + Math.ceil(coffeeUntil - time) + ' s';
     } else {
       hudCoffee.hidden = true;
+    }
+    if (coffeePace > 0) {
+      hudPace.hidden = false;
+      var pct = Math.round(Math.min(COFFEE_PACE_MAX, coffeePace) * COFFEE_PACE * 100);
+      hudPace.textContent = 'Tempo +' + pct + '%';
+    } else {
+      hudPace.hidden = true;
     }
     var playing = mode === 'playing' || mode === 'transition';
     hud.hidden = !playing && mode !== 'victory' && mode !== 'gameover';
@@ -313,6 +349,12 @@
   function playerSpeed() {
     return coffeeUntil > time ? 470 : 280;
   }
+  function paceMul() {
+    return 1 + Math.min(COFFEE_PACE_MAX, coffeePace) * COFFEE_PACE;
+  }
+  function collectGoal() {
+    return stage >= 3 ? BUDGET_GOAL_3 : BUDGET_GOAL;
+  }
 
   function playerHitbox() {
     return { x: player.x - 22, y: player.y - 138, w: 44, h: 136 };
@@ -344,6 +386,7 @@
       it.vy = rand(160, 230);
       it.vr *= 0.3;
     }
+    it.vy *= paceMul();
     items.push(it);
   }
 
@@ -354,33 +397,73 @@
     else spawnItem('hazard', null, null, ['L4', 'Wypowiedzenie', 'Cięcia Kosztów']);
   }
 
+  function spawnStage3() {
+    var r = Math.random();
+    if (r < 0.40) spawnItem('bill');
+    else if (r < 0.54) spawnItem('coffee');
+    else spawnItem('hazard', null, null, ['L4', 'Wypowiedzenie', 'Cięcia Kosztów']);
+  }
+
+  function collectSpawnEvery() {
+    var base = stage >= 3 ? Math.max(0.48, 0.80 - budget / 9000) : Math.max(0.58, 0.95 - budget / 4000);
+    return Math.max(0.26, base / paceMul());
+  }
+
   var DANCE_CLEAR = 2.65;
   var BOSS_INTRO = 1.55;
+
+  function makeOctopusBoss(opts) {
+    opts = opts || {};
+    return {
+      kind: 'octopus',
+      x: opts.x != null ? opts.x : GAME_W / 2,
+      y: opts.y != null ? opts.y : -40,
+      targetY: 158,
+      hp: opts.hp != null ? opts.hp : BOSS_HP_MAX,
+      hpMax: BOSS_HP_MAX,
+      dir: 1,
+      t: 0,
+      dropT: 1.1,
+      tips: [],
+      defeated: !!opts.defeated
+    };
+  }
+
+  function makeMechBoss(opts) {
+    opts = opts || {};
+    return {
+      kind: 'mech',
+      x: opts.x != null ? opts.x : GAME_W / 2,
+      y: opts.y != null ? opts.y : -80,
+      targetY: 168,
+      hp: opts.hp != null ? opts.hp : BOSS2_HP_MAX,
+      hpMax: BOSS2_HP_MAX,
+      dir: 1,
+      t: 0,
+      shootT: 0.8,
+      laserT: 2.4,
+      laser: null,
+      defeated: false
+    };
+  }
 
   function beginBossIntro() {
     transPhase = 'intro';
     hasBow = true;
     dance = null;
-    stage = 2;
-    boss = {
-      x: GAME_W / 2,
-      y: -40,
-      targetY: 158,
-      hp: BOSS_HP_MAX,
-      dir: 1,
-      t: 0,
-      dropT: 1.1,
-      tips: []
-    };
+    stage = pendingBoss === 4 ? 4 : 2;
+    boss = stage === 4 ? makeMechBoss() : makeOctopusBoss();
     updateHud();
   }
 
   function startTransition(opts) {
-    var skipDance = opts && opts.skipDance;
+    opts = opts || {};
+    var skipDance = !!opts.skipDance;
+    pendingBoss = opts.next || (stage >= 3 ? 4 : 2);
     mode = 'transition';
-    stage = 2;
     items = [];
     arrows = [];
+    projectiles = [];
     keys.left = keys.right = keys.shoot = false;
     playAlarm();
     if (skipDance) {
@@ -408,11 +491,84 @@
       mode = 'playing';
     }
     budget = Math.max(budget, BUDGET_GOAL);
-    startTransition({ skipDance: true });
+    startTransition({ skipDance: true, next: 2 });
+  }
+
+  function startStage3() {
+    mode = 'playing';
+    stage = 3;
+    hasBow = false;
+    boss = null;
+    dance = null;
+    transPhase = '';
+    pendingBoss = 4;
+    items = [];
+    arrows = [];
+    projectiles = [];
+    flyers = [];
+    safeInFlight = 0;
+    budget = 0;
+    keys.left = keys.right = keys.shoot = false;
+    spawnT = 0.35;
+    if (lives < LIVES_MAX) {
+      lives += 1;
+      addFloat(player.x, player.y - 112, '+1 życie', '#ffd76a');
+    }
+    hideOverlays();
+    updateHud();
+  }
+
+  function startSteal() {
+    mode = 'transition';
+    transPhase = 'steal-fly';
+    hasBow = false;
+    keys.left = keys.right = keys.shoot = false;
+    items = [];
+    arrows = [];
+    projectiles = [];
+    if (!boss) boss = makeOctopusBoss({ x: GAME_W / 2, y: 180, defeated: true, hp: 0 });
+    boss.defeated = true;
+    boss.hp = 0;
+    boss.kind = 'octopus';
+    boss.fromX = boss.x;
+    boss.fromY = boss.y;
+    var g = safeGeom();
+    boss.toX = g.x + 42;
+    boss.toY = g.y - 86;
+    boss.flyDur = 1.15;
+    boss.tFly = 0;
+    stealLootT = 0;
+    play('steal');
+    updateHud();
+  }
+
+  function startStealFlyer() {
+    if (!boss || budget <= 0) return false;
+    var g = safeGeom();
+    var value = Math.min(100, budget);
+    budget -= value;
+    flyers.push({
+      x: g.doorX, y: g.doorY,
+      x0: g.doorX + rand(-4, 4), y0: g.doorY + rand(-4, 4),
+      x1: boss.x + rand(-12, 12),
+      y1: boss.y + rand(-8, 16),
+      cx: (g.doorX + boss.x) * 0.5 + rand(-30, 30),
+      cy: Math.min(g.doorY, boss.y) - rand(40, 100),
+      t: 0,
+      dur: 0.38 + Math.random() * 0.16,
+      rot: rand(-0.8, 0.8),
+      vr: rand(-3, 3),
+      value: value,
+      steal: true
+    });
+    bumpSafe();
+    play('steal');
+    updateHud();
+    return true;
   }
 
   function shoot() {
-    if (stage !== 2 || mode !== 'playing') return;
+    if (!hasBow || mode !== 'playing') return;
     if (shotT > 0) return;
     shotT = SHOT_COOLDOWN;
     if (budget >= SHOT_COST) budget -= SHOT_COST;
@@ -478,7 +634,10 @@
     burst(boss.x, boss.y, '#ff3a5a', 12);
     score += 100;
     updateHud();
-    if (boss.hp <= 0) endGame(true);
+    if (boss.hp <= 0) {
+      if (boss.kind === 'mech' || stage === 4) endGame(true);
+      else startSteal();
+    }
   }
 
   /* ---------- aktualizacja ---------- */
@@ -505,27 +664,30 @@
 
     var i, it, hb, box;
 
-    if (mode === 'playing' && stage === 1) {
-      spawnEvery = Math.max(0.58, 0.95 - budget / 4000);
+    if (mode === 'playing' && (stage === 1 || stage === 3)) {
+      spawnEvery = collectSpawnEvery();
       spawnT -= dt;
       if (spawnT <= 0 && items.length < 14) {
-        spawnStage1();
+        if (stage === 3) spawnStage3();
+        else spawnStage1();
         spawnT = spawnEvery * rand(0.75, 1.15);
       }
-      if (budget >= BUDGET_GOAL) startTransition();
+      if (budget >= collectGoal()) startTransition();
     }
 
     if (mode === 'transition') {
       transitionT -= dt;
       if (transPhase === 'dance') {
         if (!dance || dance.t >= dance.dur) beginBossIntro();
+      } else if (transPhase && transPhase.indexOf('steal') === 0) {
+        updateSteal(dt);
       } else if (boss) {
         boss.t += dt;
         boss.y += (boss.targetY - boss.y) * Math.min(1, dt * 3.2);
       }
       if (transPhase === 'intro' && transitionT <= 0) {
         mode = 'playing';
-        stage = 2;
+        stage = pendingBoss === 4 ? 4 : 2;
         hasBow = true;
         dance = null;
         transPhase = '';
@@ -533,19 +695,25 @@
       }
     }
 
-    if (mode === 'playing' && stage === 2 && boss) {
+    if (mode === 'playing' && stage === 2 && boss && boss.kind === 'octopus') {
       boss.t += dt;
       var range = 130;
       boss.x = GAME_W / 2 + Math.sin(boss.t * 0.85) * range;
       boss.y = boss.targetY + Math.sin(boss.t * 1.4) * 6;
       boss.dropT -= dt;
       if (boss.dropT <= 0 && items.length < 12) {
-        var tip = boss.tips.length ? pick(boss.tips) : { x: boss.x, y: boss.y + 90 };
+        var tip = boss.tips && boss.tips.length ? pick(boss.tips) : { x: boss.x, y: boss.y + 90 };
         spawnItem('hazard', tip.x, tip.y, ['Nadgodziny', 'dodatkowa robota', 'kupa']);
-        items[items.length - 1].vy = rand(180, 250);
-        boss.dropT = rand(0.95, 1.55);
+        items[items.length - 1].vy = rand(180, 250) * paceMul();
+        boss.dropT = rand(0.95, 1.55) / Math.min(1.5, paceMul());
       }
     }
+
+    if (mode === 'playing' && stage === 4 && boss && boss.kind === 'mech') {
+      updateMech(dt);
+    }
+
+    updateProjectiles(dt);
 
     hb = playerHitbox();
     for (i = items.length - 1; i >= 0; i--) {
@@ -568,8 +736,10 @@
       } else if (it.kind === 'coffee') {
         score += 50;
         coffeeUntil = time + COFFEE_TIME;
+        if (coffeePace < COFFEE_PACE_MAX) coffeePace += 1;
         play('coffee');
         addFloat(player.x, player.y - 112, '+50', '#ffd76a');
+        addFloat(player.x, player.y - 132, coffeePace >= COFFEE_PACE_MAX ? 'MAX!' : 'SZYBCIEJ!', '#ffd76a');
         burst(it.x, it.y, '#ffd76a', 14);
         burst(it.x, it.y, '#fff3c0', 8);
         items.splice(i, 1);
@@ -584,11 +754,11 @@
       var ar = arrows[i];
       ar.y += ar.vy * dt;
       if (ar.y < -40) { arrows.splice(i, 1); continue; }
-      if (boss && (mode === 'playing' || mode === 'transition') && stage === 2) {
+      if (boss && !boss.defeated && mode === 'playing' && (stage === 2 || stage === 4)) {
         var bb = bossBox();
         if (aabb({ x: ar.x - 7, y: ar.y - 16, w: 14, h: 28 }, bb)) {
           arrows.splice(i, 1);
-          if (mode === 'playing') hitBoss();
+          hitBoss();
         }
       }
     }
@@ -770,8 +940,168 @@
     return pose;
   }
 
+  function easeInOut(e) {
+    return e * e * (3 - 2 * e);
+  }
+
+  function updateSteal(dt) {
+    if (!boss) { startStage3(); return; }
+    boss.t += dt;
+    if (transPhase === 'steal-fly') {
+      boss.tFly += dt;
+      var u = easeInOut(Math.min(1, boss.tFly / boss.flyDur));
+      boss.x = boss.fromX + (boss.toX - boss.fromX) * u;
+      boss.y = boss.fromY + (boss.toY - boss.fromY) * u + Math.sin(u * Math.PI) * -40;
+      if (boss.tFly >= boss.flyDur) {
+        transPhase = 'steal-loot';
+        stealLootT = 0;
+        startStealFlyer();
+        updateHud();
+      }
+    } else if (transPhase === 'steal-loot') {
+      boss.x = boss.toX + Math.sin(time * 8) * 3;
+      boss.y = boss.toY + Math.cos(time * 6) * 2;
+      stealLootT -= dt;
+      if (budget > 0 && stealLootT <= 0) {
+        startStealFlyer();
+        stealLootT = 0.09;
+      }
+      if (budget <= 0 && flyers.length === 0) {
+        transPhase = 'steal-taunt';
+        stealLootT = 1.25;
+        addFloat(boss.x, boss.y - 70, '0 $', '#ff6b6b');
+        updateHud();
+      }
+    } else if (transPhase === 'steal-taunt') {
+      boss.x = boss.toX + Math.sin(time * 6) * 2;
+      stealLootT -= dt;
+      if (stealLootT <= 0) {
+        transPhase = 'steal-flee';
+        boss.fromX = boss.x;
+        boss.fromY = boss.y;
+        boss.toX = GAME_W + 130;
+        boss.toY = 40;
+        boss.flyDur = 0.95;
+        boss.tFly = 0;
+        play('steal');
+      }
+    } else if (transPhase === 'steal-flee') {
+      boss.tFly += dt;
+      var v = easeInOut(Math.min(1, boss.tFly / boss.flyDur));
+      boss.x = boss.fromX + (boss.toX - boss.fromX) * v;
+      boss.y = boss.fromY + (boss.toY - boss.fromY) * v - Math.sin(v * Math.PI) * 50;
+      if (boss.tFly >= boss.flyDur) {
+        boss = null;
+        startStage3();
+      }
+    }
+  }
+
+  function spawnMechShot() {
+    if (!boss) return;
+    var label = pick(['Deadline', 'Nowe raporty']);
+    var dir = player && player.x < boss.x ? -1 : 1;
+    var speed = (190 + rand(0, 80)) * Math.min(1.45, paceMul());
+    var ang = rand(0.35, 1.15);
+    projectiles.push({
+      kind: 'bounce',
+      x: boss.x + dir * 50,
+      y: boss.y + 28,
+      vx: Math.cos(ang) * speed * dir,
+      vy: Math.sin(ang) * speed,
+      label: label,
+      w: label.length > 10 ? 92 : 76,
+      h: 30,
+      rot: 0,
+      vr: 0,
+      bounces: 4,
+      life: 7
+    });
+  }
+
+  function updateMech(dt) {
+    boss.t += dt;
+    var range = 120;
+    boss.x = GAME_W / 2 + Math.sin(boss.t * 0.7) * range;
+    boss.y = boss.targetY + Math.sin(boss.t * 1.7) * 8;
+    boss.shootT -= dt;
+    if (boss.shootT <= 0) {
+      spawnMechShot();
+      boss.shootT = rand(0.95, 1.5) / Math.min(1.35, paceMul());
+    }
+    if (!boss.laser) {
+      boss.laserT -= dt;
+      if (boss.laserT <= 0) {
+        var fromA = player && player.x < boss.x ? 0.25 : Math.PI - 0.25;
+        var toA = player && player.x < boss.x ? Math.PI - 0.2 : 0.2;
+        boss.laser = { phase: 'tele', t: 0, durTele: 0.55, durFire: 0.55, a0: fromA, a1: toA, hit: false };
+        boss.laserT = rand(3.4, 4.6);
+      }
+    } else {
+      var L = boss.laser;
+      L.t += dt;
+      var tot = L.durTele + L.durFire;
+      if (L.t < L.durTele) {
+        L.phase = 'tele';
+        L.ang = L.a0;
+      } else if (L.t < tot) {
+        if (L.phase !== 'fire') { L.phase = 'fire'; play('laser'); }
+        var uf = (L.t - L.durTele) / L.durFire;
+        L.ang = L.a0 + (L.a1 - L.a0) * easeInOut(uf);
+        if (!L.hit && player && laserHitsPlayer(L.ang)) {
+          L.hit = true;
+          hurtPlayer();
+        }
+      } else {
+        boss.laser = null;
+      }
+    }
+  }
+
+  function laserOrigin() {
+    return { x: boss.x, y: boss.y + 18 };
+  }
+  function laserHitsPlayer(ang) {
+    if (!player || !boss) return false;
+    var o = laserOrigin();
+    var lx = Math.cos(ang), ly = Math.sin(ang);
+    var hb = playerHitbox();
+    var px = hb.x + hb.w / 2, py = hb.y + hb.h / 2;
+    var wx = px - o.x, wy = py - o.y;
+    var t = wx * lx + wy * ly;
+    if (t < 0 || t > 520) return false;
+    var dx = o.x + lx * t - px, dy = o.y + ly * t - py;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+    return dist < 22;
+  }
+
+  function updateProjectiles(dt) {
+    if (!projectiles.length) return;
+    var i, pr, hb, box;
+    hb = player ? playerHitbox() : null;
+    for (i = projectiles.length - 1; i >= 0; i--) {
+      pr = projectiles[i];
+      pr.life -= dt;
+      pr.x += pr.vx * dt;
+      pr.y += pr.vy * dt;
+      if (pr.x < pr.w / 2) { pr.x = pr.w / 2; pr.vx = Math.abs(pr.vx); pr.bounces -= 1; }
+      if (pr.x > GAME_W - pr.w / 2) { pr.x = GAME_W - pr.w / 2; pr.vx = -Math.abs(pr.vx); pr.bounces -= 1; }
+      if (pr.y < 40) { pr.y = 40; pr.vy = Math.abs(pr.vy); pr.bounces -= 1; }
+      if (pr.y > GAME_H - 20) { pr.y = GAME_H - 20; pr.vy = -Math.abs(pr.vy); pr.bounces -= 1; }
+      if (pr.life <= 0 || pr.bounces < 0) { projectiles.splice(i, 1); continue; }
+      if (mode === 'playing' && hb) {
+        box = { x: pr.x - pr.w / 2, y: pr.y - pr.h / 2, w: pr.w, h: pr.h };
+        if (aabb(hb, box)) {
+          projectiles.splice(i, 1);
+          hurtPlayer();
+        }
+      }
+    }
+  }
+
   function bossBox() {
     if (!boss) return { x: 0, y: 0, w: 0, h: 0 };
+    if (boss.kind === 'mech') return { x: boss.x - 78, y: boss.y - 72, w: 156, h: 168 };
     return { x: boss.x - 70, y: boss.y - 70, w: 140, h: 130 };
   }
 
@@ -1030,10 +1360,11 @@
     ctx.translate(it.x, it.y);
     ctx.rotate(it.rot * 0.25);
     var w = it.w, h = it.h;
-    ctx.fillStyle = stage === 2 ? '#9a2a4a' : '#c62828';
+    var bossSt = stage === 2 || stage === 4;
+    ctx.fillStyle = bossSt ? '#9a2a4a' : '#c62828';
     rounded(ctx, -w / 2, -h / 2, w, h, 7);
     ctx.fill();
-    ctx.fillStyle = stage === 2 ? '#c43a62' : '#e53935';
+    ctx.fillStyle = bossSt ? '#c43a62' : '#e53935';
     rounded(ctx, -w / 2 + 2, -h / 2 + 2, w - 4, h - 4, 5);
     ctx.fill();
     ctx.fillStyle = '#fff';
@@ -1119,11 +1450,16 @@
       f.y = inv * inv * f.y0 + 2 * inv * u * f.cy + u * u * f.y1;
       f.rot += f.vr * dt;
       if (f.t >= f.dur) {
-        safeInFlight = Math.max(0, safeInFlight - f.value);
-        bumpSafe();
-        play('safe');
-        burst(f.x1, f.y1, '#ffd76a', 10);
-        burst(f.x1, f.y1, '#3dff7a', 6);
+        if (f.steal) {
+          burst(f.x1, f.y1, '#ffd76a', 8);
+          burst(f.x1, f.y1, '#3dff7a', 5);
+        } else {
+          safeInFlight = Math.max(0, safeInFlight - f.value);
+          bumpSafe();
+          play('safe');
+          burst(f.x1, f.y1, '#ffd76a', 10);
+          burst(f.x1, f.y1, '#3dff7a', 6);
+        }
         flyers.splice(i, 1);
       }
     }
@@ -1480,18 +1816,26 @@
 
   function drawBoss(ctx) {
     if (!boss) return;
+    if (boss.kind === 'mech') { drawMech(ctx); return; }
     var x = boss.x, y = boss.y, t = boss.t;
     var flashing = boss.flashUntil && boss.flashUntil > time;
+    var defeated = !!boss.defeated;
     boss.tips = [];
+    if (defeated) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.sin(t * 3) * 0.12);
+      ctx.translate(-x, -y);
+    }
     /* macki (za ciałem) — rozchodzą się na boki i falują */
     var i, s, k, px, py, pts;
     for (i = 0; i < 8; i++) {
       var spread = (i - 3.5) / 3.5;
       var attachX = x + spread * 36;
       var attachY = y + 36;
-      var len = 100 + Math.abs(spread) * 28 + (i % 2) * 14;
-      var wave1 = Math.sin(t * 1.85 + i * 0.85);
-      var wave2 = Math.sin(t * 2.15 + i * 1.05 + 0.7);
+      var len = (defeated ? 70 : 100) + Math.abs(spread) * (defeated ? 14 : 28) + (i % 2) * 14;
+      var wave1 = defeated ? Math.sin(t * 0.7 + i) * 0.35 : Math.sin(t * 1.85 + i * 0.85);
+      var wave2 = defeated ? 0.15 : Math.sin(t * 2.15 + i * 1.05 + 0.7);
       pts = [];
       ctx.beginPath();
       ctx.moveTo(x + spread * 18, y + 18);
@@ -1547,16 +1891,41 @@
 
     drawHead(ctx, imgCto, x, y - 28, 36, drawFallbackCto);
 
-    /* pasek życia */
+    if (defeated) {
+      /* komiksowy zawrót głowy i dym */
+      ctx.strokeStyle = 'rgba(255,220,80,0.85)';
+      ctx.lineWidth = 2;
+      var st, ang;
+      for (st = 0; st < 3; st++) {
+        ang = t * 3 + st * 2.1;
+        ctx.beginPath();
+        ctx.arc(x + Math.cos(ang) * 34, y - 58 + Math.sin(ang * 1.3) * 6, 4, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(180,180,190,0.45)';
+      for (st = 0; st < 4; st++) {
+        ctx.beginPath();
+        ctx.arc(x - 40 + st * 10, y - 10 - (t * 20 + st * 12) % 36, 6 + st, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+      return;
+    }
+
+    drawBossHp(ctx, x, y - 82);
+  }
+
+  function drawBossHp(ctx, x, by) {
+    var hpMax = boss.hpMax || BOSS_HP_MAX;
     var bw = 160, bh = 12;
-    var bx = x - bw / 2, by = y - 82;
+    var bx = x - bw / 2;
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     rounded(ctx, bx - 2, by - 2, bw + 4, bh + 4, 5);
     ctx.fill();
     ctx.fillStyle = '#3a1020';
     rounded(ctx, bx, by, bw, bh, 4);
     ctx.fill();
-    var frac = Math.max(0, boss.hp / BOSS_HP_MAX);
+    var frac = Math.max(0, boss.hp / hpMax);
     if (frac > 0) {
       ctx.fillStyle = frac > 0.4 ? '#ff5a7a' : '#ff3040';
       rounded(ctx, bx, by, bw * frac, bh, 4);
@@ -1566,7 +1935,113 @@
     ctx.font = fontTiny(16);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText('CTO  ' + boss.hp + ' / ' + BOSS_HP_MAX + ' HP', x, by - 4);
+    var title = boss.kind === 'mech' ? 'CTO MECH  ' : 'CTO  ';
+    ctx.fillText(title + boss.hp + ' / ' + hpMax + ' HP', x, by - 4);
+  }
+
+  function drawMech(ctx) {
+    if (!boss) return;
+    var x = Math.round(boss.x), y = Math.round(boss.y + Math.sin(boss.t * 1.7) * 2);
+    var flashing = boss.flashUntil && boss.flashUntil > time;
+    var steel = flashing ? '#8a2a32' : '#2a3340';
+    var hi = flashing ? '#c45a62' : '#5a6a80';
+    var dk = flashing ? '#4a1018' : '#141820';
+    var acc = flashing ? '#ff3a4a' : '#3dff7a';
+    var acc2 = flashing ? '#ff8a4a' : '#ff5a3a';
+    ctx.imageSmoothingEnabled = false;
+
+    /* laser */
+    if (boss.laser && boss.laser.ang != null) {
+      var o = laserOrigin();
+      var ang = boss.laser.ang;
+      var ex = o.x + Math.cos(ang) * 540;
+      var ey = o.y + Math.sin(ang) * 540;
+      if (boss.laser.phase === 'tele') {
+        ctx.strokeStyle = 'rgba(255, 80, 80, 0.55)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 7]);
+        ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(ex, ey); ctx.stroke();
+        ctx.setLineDash([]);
+      } else if (boss.laser.phase === 'fire') {
+        ctx.strokeStyle = 'rgba(255, 40, 40, 0.28)';
+        ctx.lineWidth = 22;
+        ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(ex, ey); ctx.stroke();
+        ctx.strokeStyle = '#ff5a3a';
+        ctx.lineWidth = 8;
+        ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(ex, ey); ctx.stroke();
+        ctx.strokeStyle = '#ffe9a0';
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(ex, ey); ctx.stroke();
+        ctx.lineCap = 'butt';
+      }
+    }
+
+    /* dysze */
+    var j, jf;
+    for (j = -1; j <= 1; j += 2) {
+      jf = 10 + ((time * 18 + j) % 10);
+      pix(ctx, x + j * 22 - 5, y + 72, 10, jf + 2, '#08080a');
+      pix(ctx, x + j * 22 - 4, y + 72, 8, jf, '#ffb14a');
+      pix(ctx, x + j * 22 - 2, y + 72, 4, Math.max(4, jf - 4), '#fff3c0');
+    }
+
+    /* nogi / płozy */
+    pix(ctx, x - 40, y + 50, 28, 26, '#08080a');
+    pix(ctx, x + 12, y + 50, 28, 26, '#08080a');
+    pix(ctx, x - 38, y + 52, 24, 22, steel);
+    pix(ctx, x + 14, y + 52, 24, 22, steel);
+    pix(ctx, x - 36, y + 54, 6, 14, hi);
+    pix(ctx, x + 16, y + 54, 6, 14, hi);
+
+    /* ramiona / działa */
+    pix(ctx, x - 86, y - 8, 36, 28, '#08080a');
+    pix(ctx, x + 50, y - 8, 36, 28, '#08080a');
+    pix(ctx, x - 84, y - 6, 32, 24, steel);
+    pix(ctx, x + 52, y - 6, 32, 24, steel);
+    pix(ctx, x - 88, y + 2, 18, 18, '#08080a');
+    pix(ctx, x + 70, y + 2, 18, 18, '#08080a');
+    pix(ctx, x - 86, y + 4, 14, 14, dk);
+    pix(ctx, x + 72, y + 4, 14, 14, dk);
+    pix(ctx, x - 82, y + 8, 8, 6, acc2);
+    pix(ctx, x + 74, y + 8, 8, 6, acc2);
+
+    /* tułów */
+    pix(ctx, x - 52, y - 22, 104, 78, '#08080a');
+    pix(ctx, x - 50, y - 20, 100, 74, steel);
+    pix(ctx, x - 46, y - 16, 18, 60, hi);
+    pix(ctx, x + 30, y - 14, 16, 50, dk);
+    /* rdzeń */
+    pix(ctx, x - 16, y - 4, 32, 32, '#08080a');
+    pix(ctx, x - 14, y - 2, 28, 28, dk);
+    pix(ctx, x - 10, y + 2, 20, 20, acc);
+    pix(ctx, x - 6, y + 6, 12, 12, flashing ? '#fff' : '#b8ff3d');
+    /* naramienniki */
+    pix(ctx, x - 70, y - 28, 48, 22, '#08080a');
+    pix(ctx, x + 22, y - 28, 48, 22, '#08080a');
+    pix(ctx, x - 68, y - 26, 44, 18, hi);
+    pix(ctx, x + 24, y - 26, 44, 18, steel);
+    pix(ctx, x - 64, y - 22, 12, 8, acc);
+    pix(ctx, x + 52, y - 22, 12, 8, acc);
+
+    /* kołnierz / kokpit pod głowę */
+    pix(ctx, x - 28, y - 44, 56, 20, '#08080a');
+    pix(ctx, x - 26, y - 42, 52, 16, hi);
+    pix(ctx, x - 16, y - 40, 32, 12, dk);
+
+    if (flashing) {
+      ctx.fillStyle = 'rgba(255, 40, 60, 0.32)';
+      ctx.fillRect(x - 90, y - 50, 180, 150);
+    }
+
+    drawHead(ctx, imgCto, x, y - 62, 32, drawFallbackCto);
+
+    /* hełm-obręcz wokół szyi */
+    pix(ctx, x - 22, y - 42, 44, 8, steel);
+    pix(ctx, x - 20, y - 41, 8, 6, acc);
+
+    drawBossHp(ctx, x, y - 112);
+    ctx.imageSmoothingEnabled = true;
   }
 
   function drawBgFallback(ctx) {
@@ -1646,6 +2121,7 @@
       else if (it.kind === 'coffee') drawCoffee(ctx, it.x, it.y, it.rot * 0.2);
       else drawHazard(ctx, it);
     });
+    projectiles.forEach(function (pr) { drawHazard(ctx, pr); });
     arrows.forEach(function (ar) { drawArrow(ctx, ar); });
     if (boss) drawBoss(ctx);
     if (player) drawPlayer(ctx);
@@ -1697,17 +2173,27 @@
         ctx.fillRect(0, 0, GAME_W, GAME_H);
         ctx.strokeStyle = 'rgba(0,0,0,0.6)';
         ctx.lineWidth = 4;
+        var goalTxt = pendingBoss === 4 ? '3000 $' : '1000 $';
         ctx.font = fontArcade(14);
         ctx.fillStyle = '#b8ff3d';
-        ctx.strokeText('1000 $', GAME_W / 2, 210);
+        ctx.strokeText(goalTxt, GAME_W / 2, 210);
         ctx.shadowColor = 'rgba(184,255,61,0.9)';
         ctx.shadowBlur = 10;
-        ctx.fillText('1000 $', GAME_W / 2, 210);
+        ctx.fillText(goalTxt, GAME_W / 2, 210);
         ctx.shadowBlur = 0;
         ctx.font = fontTiny(30);
         ctx.fillStyle = '#3dff7a';
         ctx.strokeText('Budżet zebrany!', GAME_W / 2, 248);
         ctx.fillText('Budżet zebrany!', GAME_W / 2, 248);
+      } else if (transPhase && transPhase.indexOf('steal') === 0) {
+        if (transPhase !== 'steal-fly') {
+          ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+          ctx.lineWidth = 4;
+          ctx.font = fontTiny(30);
+          ctx.fillStyle = '#ff6b6b';
+          ctx.strokeText('CTO zabrał cały budżet!', GAME_W / 2, 220);
+          ctx.fillText('CTO zabrał cały budżet!', GAME_W / 2, 220);
+        }
       } else {
         var pulse = 0.18 + 0.14 * Math.abs(Math.sin(time * 10));
         ctx.fillStyle = 'rgba(180,0,20,' + pulse + ')';
@@ -1716,12 +2202,14 @@
         ctx.font = fontArcade(16);
         ctx.strokeStyle = 'rgba(0,0,0,0.55)';
         ctx.lineWidth = 4;
-        ctx.strokeText('ETAP 2', GAME_W / 2, GAME_H / 2 - 18);
-        ctx.fillText('ETAP 2', GAME_W / 2, GAME_H / 2 - 18);
+        var etap = pendingBoss === 4 ? 'ETAP 4' : 'ETAP 2';
+        var sub = pendingBoss === 4 ? 'CTO w mechucie' : 'Walka z bossem CTO';
+        ctx.strokeText(etap, GAME_W / 2, GAME_H / 2 - 18);
+        ctx.fillText(etap, GAME_W / 2, GAME_H / 2 - 18);
         ctx.font = fontTiny(26);
         ctx.fillStyle = '#b8ff3d';
-        ctx.strokeText('Walka z bossem CTO', GAME_W / 2, GAME_H / 2 + 18);
-        ctx.fillText('Walka z bossem CTO', GAME_W / 2, GAME_H / 2 + 18);
+        ctx.strokeText(sub, GAME_W / 2, GAME_H / 2 + 18);
+        ctx.fillText(sub, GAME_W / 2, GAME_H / 2 + 18);
       }
     }
     ctx.restore();
@@ -1846,29 +2334,62 @@
   window.addEventListener('resize', fit);
 
   /* hook do testów / debugowania */
+  function ensurePlay() {
+    if (mode === 'start' || mode === 'victory' || mode === 'gameover' || !player) {
+      resetGame();
+      hideOverlays();
+      mode = 'playing';
+    }
+  }
+
   window.__graDebug = {
+    etap1: function () {
+      resetGame();
+      hideOverlays();
+      mode = 'playing';
+      updateHud();
+    },
     etap2: startStage2Direct,
+    etap3: function () {
+      ensurePlay();
+      budget = 0;
+      startStage3();
+    },
+    etap4: function () {
+      ensurePlay();
+      budget = Math.max(budget, 400);
+      startTransition({ skipDance: true, next: 4 });
+    },
+    kradziez: function () {
+      ensurePlay();
+      budget = Math.max(budget, 1000);
+      flyers = [];
+      safeInFlight = 0;
+      boss = makeOctopusBoss({ x: GAME_W / 2, y: 220, defeated: true, hp: 0 });
+      hideOverlays();
+      startSteal();
+      updateHud();
+    },
     wygrana: function () {
-      if (mode === 'start' || !player) { resetGame(); hideOverlays(); }
-      budget = Math.max(budget, BUDGET_GOAL);
-      if (!boss) startTransition({ skipDance: true });
-      if (boss) boss.hp = 0;
-      stage = 2;
+      ensurePlay();
+      stage = 4;
       endGame(true);
     },
     przegrana: function () {
-      if (mode === 'start' || !player) { resetGame(); hideOverlays(); mode = 'playing'; }
+      ensurePlay();
       lives = 0;
       endGame(false);
     },
-    taniec: function () {
-      if (mode === 'start' || !player) { resetGame(); hideOverlays(); }
-      budget = Math.max(budget, BUDGET_GOAL);
-      startTransition();
+    taniec: function (which) {
+      ensurePlay();
+      var next = which === 4 || which === '4' || stage >= 3 ? 4 : 2;
+      budget = Math.max(budget, next === 4 ? BUDGET_GOAL_3 : BUDGET_GOAL);
+      startTransition({ next: next });
     },
     budzet: function (n) { budget = n; updateHud(); },
+    kawa: function (n) { coffeePace = Math.max(0, n == null ? coffeePace + 1 : n); updateHud(); },
     lot: function () {
-      if (!player) { resetGame(); hideOverlays(); mode = 'playing'; }
+      ensurePlay();
       budget += 100;
       startFlyer(player.x, player.y - 80, 100);
       updateHud();
@@ -1876,9 +2397,13 @@
     stan: function () {
       return {
         mode: mode, stage: stage, budget: budget, score: score,
-        lives: lives, bossHp: boss ? boss.hp : null, paused: paused,
+        lives: lives, bossHp: boss ? boss.hp : null,
+        bossKind: boss ? boss.kind : null, paused: paused,
         safeStack: safeStackValue(), flyers: flyers.length,
-        transPhase: transPhase, hasBow: hasBow,
+        transPhase: transPhase, hasBow: hasBow, coffeePace: coffeePace,
+        pace: paceMul(), pendingBoss: pendingBoss,
+        projectiles: projectiles.length,
+        laser: !!(boss && boss.laser),
         dance: dance ? { kind: dance.kind, t: dance.t, looping: dance.looping } : null
       };
     }

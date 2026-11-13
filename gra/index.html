@@ -56,6 +56,7 @@
   .hearts { letter-spacing: 0.08em; color: #ff5a6a; }
   .hearts .off { opacity: 0.22; }
   .coffee-tag { color: #f3d19a; }
+  .pace-tag { color: #ffd76a; text-shadow: 0 0 8px rgba(255, 215, 106, 0.45); }
   .icon-btn {
     width: 2.6rem; height: 2.6rem; border-radius: 0.8rem; cursor: pointer; flex-shrink: 0;
     margin-left: auto;
@@ -198,6 +199,7 @@
       <span>Wynik: <b id="hud-score">0</b></span>
       <span id="hud-stage">Etap 1</span>
       <span class="coffee-tag" id="hud-coffee" hidden></span>
+      <span class="pace-tag" id="hud-pace" hidden></span>
     </div>
     <button type="button" class="icon-btn" id="btn-mute" aria-pressed="false" aria-label="Wycisz dźwięk" title="Dźwięk">
       <svg id="icon-mute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -212,11 +214,13 @@
     <div class="overlay" id="overlay-start">
       <div class="card">
         <h1>Krzysztof kontra CTO</h1>
-        <p class="lead">Zbierz budżet, a potem pokonaj bossa z łuku.</p>
+        <p class="lead">Zbierz budżet i pokonaj bossa — dwa razy.</p>
         <ul>
-          <li><strong>Ruch:</strong> strzałki lub A/D (na telefonie przyciski).</li>
-          <li><strong>Etap 1:</strong> łap zielone banknoty (+100 $) i kawę (+50 pkt i przyspieszenie na 5 s). Unikaj czerwonych przeszkód: L4, Wypowiedzenie, Cięcia Kosztów — masz 3 życia.</li>
-          <li><strong>Etap 2:</strong> po zebraniu 1000 $ czeka Cię walka z bossem CTO. Strzelaj spacją (każdy strzał kosztuje 10 $, ale zawsze możesz strzelić).</li>
+          <li><strong>Ruch:</strong> strzałki lub A/D (na telefonie przyciski). Strzał: spacja (10 $, zawsze można).</li>
+          <li><strong>Etap 1:</strong> łap banknoty (+100 $) i kawę (+50 pkt, 5 s szybkości Krzysztofa i stałe przyspieszenie gry). Unikaj: L4, Wypowiedzenie, Cięcia Kosztów — 3 życia.</li>
+          <li><strong>Etap 2:</strong> po 1000 $ walka z CTO-ośmiornicą. Pokonany CTO ukradnie cały budżet z sejfu.</li>
+          <li><strong>Etap 3:</strong> zbierz ponownie, tym razem 3000 $ (trudniej). Na start +1 życie (maks. 3).</li>
+          <li><strong>Etap 4:</strong> CTO wraca w mechucie. Pokonaj go, żeby wygrać.</li>
         </ul>
         <button type="button" class="btn" id="btn-play">Graj</button>
       </div>
