@@ -153,6 +153,9 @@
       tone(392, 'square', t, 0.2, 0.16, 300);
       tone(311, 'square', t + 0.2, 0.22, 0.16, 220);
       tone(196, 'sawtooth', t + 0.42, 0.45, 0.18, 90);
+    } else if (name === 'safe') {
+      tone(980, 'square', t, 0.06, 0.12);
+      tone(1318, 'square', t + 0.05, 0.1, 0.13);
     }
   }
 
@@ -188,6 +191,9 @@
   var arrows = [];
   var floats = [];
   var particles = [];
+  var flyers = [];
+  var safeInFlight = 0;
+  var safeSx = 1, safeSy = 1, safeVx = 0, safeVy = 0, safeFlash = 0;
   var player = null;
   var boss = null;
   var transitionT = 0;
@@ -218,6 +224,9 @@
     arrows = [];
     floats = [];
     particles = [];
+    flyers = [];
+    safeInFlight = 0;
+    safeSx = 1; safeSy = 1; safeVx = 0; safeVy = 0; safeFlash = 0;
     boss = null;
     transitionT = 0;
     shakeT = 0;
@@ -432,6 +441,7 @@
     time += dt;
     if (shotT > 0) shotT -= dt;
     if (shakeT > 0) shakeT = Math.max(0, shakeT - dt);
+    updateSafe(dt);
 
     var spd = playerSpeed();
     var dir = (keys.left ? -1 : 0) + (keys.right ? 1 : 0);
@@ -500,6 +510,7 @@
         addFloat(player.x, player.y - 112, '+100$', '#3dff7a');
         burst(it.x, it.y, '#3dff7a', 12);
         burst(it.x, it.y, '#b8ff3d', 6);
+        startFlyer(it.x, it.y, 100);
         items.splice(i, 1);
         updateHud();
       } else if (it.kind === 'coffee') {
@@ -855,30 +866,182 @@
     }
   }
 
-  function drawBudgetStack(ctx) {
-    var n = Math.min(12, Math.floor(budget / 100));
-    if (n <= 0 && budget <= 0) {
-      /* nadal pokaż etykietę pustego stosu */
+  function safeGeom() {
+    var w = 110, h = 94;
+    var x = GAME_W - 10 - w;
+    var y = GAME_H - 14 - h;
+    return { x: x, y: y, w: w, h: h, doorX: x + 34, doorY: y + 50 };
+  }
+  function safeStackValue() {
+    return Math.max(0, budget - safeInFlight);
+  }
+  function startFlyer(x, y, value) {
+    value = value || 100;
+    var g = safeGeom();
+    flyers.push({
+      x: x, y: y,
+      x0: x, y0: y,
+      x1: g.doorX + rand(-5, 5),
+      y1: g.doorY + rand(-4, 4),
+      cx: (x + g.doorX) * 0.5 + rand(-24, 24),
+      cy: Math.min(y, g.doorY) - rand(70, 125),
+      t: 0,
+      dur: 0.52 + Math.random() * 0.16,
+      rot: rand(-0.5, 0.5),
+      vr: rand(-2.4, 2.4),
+      value: value
+    });
+    safeInFlight += value;
+  }
+  function bumpSafe() {
+    safeFlash = 1;
+    if (reduceMotion) return;
+    safeSx = 1.14;
+    safeSy = 0.88;
+    safeVx = 0;
+    safeVy = 0;
+  }
+  function updateSafe(dt) {
+    var k = 150, dmp = 11;
+    safeVx += ((1 - safeSx) * k - safeVx * dmp) * dt;
+    safeVy += ((1 - safeSy) * k - safeVy * dmp) * dt;
+    safeSx += safeVx * dt;
+    safeSy += safeVy * dt;
+    if (safeFlash > 0) safeFlash = Math.max(0, safeFlash - dt * 3.4);
+    var i, f, e, u, inv;
+    for (i = flyers.length - 1; i >= 0; i--) {
+      f = flyers[i];
+      f.t += dt;
+      e = Math.min(1, f.t / f.dur);
+      u = e * e * (3 - 2 * e);
+      inv = 1 - u;
+      f.x = inv * inv * f.x0 + 2 * inv * u * f.cx + u * u * f.x1;
+      f.y = inv * inv * f.y0 + 2 * inv * u * f.cy + u * u * f.y1;
+      f.rot += f.vr * dt;
+      if (f.t >= f.dur) {
+        safeInFlight = Math.max(0, safeInFlight - f.value);
+        bumpSafe();
+        play('safe');
+        burst(f.x1, f.y1, '#ffd76a', 10);
+        burst(f.x1, f.y1, '#3dff7a', 6);
+        flyers.splice(i, 1);
+      }
     }
-    var onRight = player.x < GAME_W - 90;
-    var sx = onRight ? player.x + 58 : player.x - 58;
-    var baseY = player.y - 8;
-    for (var i = 0; i < n; i++) {
-      var ox = ((i % 3) - 1) * 3;
-      drawBill(ctx, sx + ox, baseY - i * 5.2, 0.08 * ((i % 2) ? 1 : -1), 0.85);
-    }
+  }
+  function pxl(ctx, x, y, w, h, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
+  }
+  function drawSafe(ctx) {
+    var g = safeGeom();
+    var x = g.x, y = g.y, w = g.w, h = g.h;
+    var notes = Math.min(14, Math.floor(safeStackValue() / 100));
+    var i;
+
     ctx.save();
-    ctx.font = fontTiny(16);
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(x + w * 0.42, y + h - 1, w * 0.4, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.save();
+    ctx.translate(x + w * 0.42, y + h - 4);
+    ctx.scale(safeSx, safeSy);
+    ctx.translate(-(x + w * 0.42), -(y + h - 4));
+
+    /* korpus ze stali */
+    pxl(ctx, x, y + 8, 74, 78, '#2f3946');
+    pxl(ctx, x + 2, y + 10, 70, 74, '#5a6a7c');
+    pxl(ctx, x + 2, y + 10, 70, 7, '#8e9eaf');
+    pxl(ctx, x + 2, y + 16, 70, 3, '#6d7e90');
+    pxl(ctx, x + 2, y + 77, 70, 7, '#2a3340');
+    pxl(ctx, x, y + 8, 3, 78, '#7b8b9c');
+    pxl(ctx, x + 71, y + 8, 3, 78, '#24303c');
+    /* nity */
+    [[x + 5, y + 13], [x + 65, y + 13], [x + 5, y + 74], [x + 65, y + 74]].forEach(function (rv) {
+      pxl(ctx, rv[0], rv[1], 4, 4, '#1a2028');
+      pxl(ctx, rv[0] + 1, rv[1] + 1, 2, 2, '#d0d8e0');
+    });
+    /* otwór i wnętrze */
+    pxl(ctx, x + 10, y + 20, 44, 54, '#1c232c');
+    pxl(ctx, x + 12, y + 22, 40, 50, '#0b0908');
+    pxl(ctx, x + 13, y + 23, 38, 6, '#16120e');
+    /* stos banknotów w środku (rośnie po dolocie) */
+    for (i = 0; i < notes; i++) {
+      var ny = y + 66 - i * 3;
+      var nx = x + 16 + (i % 3) - 1;
+      pxl(ctx, nx, ny - 8, 32, 10, '#0f4a24');
+      pxl(ctx, nx + 1, ny - 7, 30, 8, '#27c464');
+      pxl(ctx, nx + 2, ny - 6, 28, 1, '#b8ff3d');
+      pxl(ctx, nx + 12, ny - 4, 8, 3, '#0a3d20');
+    }
+
+    /* uchylone drzwi z pokrętłem (zawias po prawej stronie otworu) */
+    ctx.save();
+    ctx.translate(x + 54, y + 20);
+    ctx.rotate(-0.22);
+    pxl(ctx, -3, 0, 4, 58, '#232b34');
+    pxl(ctx, 0, 0, 30, 58, '#3e4b59');
+    pxl(ctx, 2, 2, 26, 54, '#6b7d90');
+    pxl(ctx, 2, 2, 26, 5, '#a8b6c4');
+    pxl(ctx, 2, 50, 26, 6, '#3a4654');
+    /* pokrętło */
+    ctx.fillStyle = '#242a32';
+    ctx.beginPath(); ctx.arc(15, 27, 10, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#cfd6de';
+    ctx.beginPath(); ctx.arc(15, 27, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#5a6570';
+    ctx.beginPath(); ctx.arc(15, 27, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#1a1f26';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(15, 27); ctx.lineTo(15 + 7, 27 - 3); ctx.stroke();
+    ctx.strokeStyle = '#2c343c';
+    ctx.lineWidth = 1;
+    for (i = 0; i < 8; i++) {
+      var a = i * Math.PI / 4;
+      ctx.beginPath();
+      ctx.moveTo(15 + Math.cos(a) * 6.5, 27 + Math.sin(a) * 6.5);
+      ctx.lineTo(15 + Math.cos(a) * 8.5, 27 + Math.sin(a) * 8.5);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    if (safeFlash > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = 'rgba(255, 210, 70, ' + (safeFlash * 0.32) + ')';
+      ctx.fillRect(x + 2, y + 10, 70, 74);
+      ctx.restore();
+    }
+    ctx.restore(); /* squash */
+
+    /* neonowa etykieta — nie podlega squash, żeby pozostała czytelna */
+    var lx = x + 48;
+    var ly = y + 4;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillStyle = 'rgba(10,12,10,0.7)';
-    ctx.fillText('Budżet', sx + 1, baseY - n * 5.2 - 16);
-    ctx.fillStyle = '#b8ff3d';
-    ctx.fillText('Budżet', sx, baseY - n * 5.2 - 17);
+    ctx.lineJoin = 'round';
+    ctx.font = fontArcade(8);
+    ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+    ctx.lineWidth = 3;
+    ctx.strokeText('BUDŻET', lx, ly - 16);
+    ctx.shadowColor = 'rgba(61,255,122,0.95)';
+    ctx.shadowBlur = 8;
     ctx.fillStyle = '#3dff7a';
-    ctx.font = fontTiny(18);
-    ctx.fillText(fmtMoney(budget), sx, baseY - n * 5.2 - 4);
+    ctx.fillText('BUDŻET', lx, ly - 16);
+    ctx.shadowBlur = 0;
+    ctx.font = fontArcade(10);
+    ctx.strokeText(fmtMoney(budget), lx, ly);
+    ctx.shadowColor = 'rgba(184,255,61,0.9)';
+    ctx.shadowBlur = 7;
+    ctx.fillStyle = '#b8ff3d';
+    ctx.fillText(fmtMoney(budget), lx, ly);
+    ctx.shadowBlur = 0;
     ctx.restore();
+  }
+  function drawFlyers(ctx) {
+    flyers.forEach(function (f) { drawBill(ctx, f.x, f.y, f.rot, 0.9); });
   }
 
   function drawPlayer(ctx) {
@@ -889,9 +1052,6 @@
     var bob = (!reduceMotion && moving) ? Math.abs(Math.sin(player.walk * 1.05)) * 5.5 : 0;
     var y = groundY - bob;
     var flash = time < invulnUntil && Math.floor(time * 16) % 2 === 0;
-
-    /* stos budżetu za postacią, żeby nie zasłaniał łuku */
-    drawBudgetStack(ctx);
 
     if (coffeeUntil > time) {
       var pulse = 0.55 + 0.3 * Math.sin(time * 9);
@@ -1239,6 +1399,8 @@
     arrows.forEach(function (ar) { drawArrow(ctx, ar); });
     if (boss) drawBoss(ctx);
     if (player) drawPlayer(ctx);
+    drawSafe(ctx);
+    drawFlyers(ctx);
 
     particles.forEach(function (p) {
       ctx.globalAlpha = Math.max(0, p.life * 3);
@@ -1429,10 +1591,17 @@
       endGame(false);
     },
     budzet: function (n) { budget = n; updateHud(); },
+    lot: function () {
+      if (!player) { resetGame(); hideOverlays(); mode = 'playing'; }
+      budget += 100;
+      startFlyer(player.x, player.y - 80, 100);
+      updateHud();
+    },
     stan: function () {
       return {
         mode: mode, stage: stage, budget: budget, score: score,
-        lives: lives, bossHp: boss ? boss.hp : null, paused: paused
+        lives: lives, bossHp: boss ? boss.hp : null, paused: paused,
+        safeStack: safeStackValue(), flyers: flyers.length
       };
     }
   };
