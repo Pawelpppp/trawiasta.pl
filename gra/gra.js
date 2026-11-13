@@ -305,7 +305,7 @@
     }
     if (coffeeUntil > time) {
       hudCoffee.hidden = false;
-      hudCoffee.textContent = 'Kawa: ' + Math.ceil(coffeeUntil - time) + ' s';
+      hudCoffee.textContent = 'Papieros: ' + Math.ceil(coffeeUntil - time) + ' s';
     } else {
       hudCoffee.hidden = true;
     }
@@ -379,10 +379,13 @@
       w: 36, h: 24
     };
     if (kind === 'bill') { it.w = 42; it.h = 22; it.vy = rand(130, 190); }
-    if (kind === 'coffee') { it.w = 28; it.h = 32; it.vy = rand(150, 200); }
+    if (kind === 'coffee') { it.w = 42; it.h = 18; it.vy = rand(150, 200); }
     if (kind === 'hazard') {
-      it.w = it.label.length > 10 ? 86 : 72;
-      it.h = it.label.length > 10 ? 36 : 30;
+      var words = it.label.split(' ');
+      var longest = 0, wi;
+      for (wi = 0; wi < words.length; wi++) if (words[wi].length > longest) longest = words[wi].length;
+      it.w = Math.max(it.label.length > 10 ? 86 : 72, longest * 8 + 20);
+      it.h = (words.length > 1 && it.label.length > 8) ? 38 : (it.label.length > 10 ? 36 : 30);
       it.vy = rand(160, 230);
       it.vr *= 0.3;
     }
@@ -394,14 +397,14 @@
     var r = Math.random();
     if (r < 0.46) spawnItem('bill');
     else if (r < 0.62) spawnItem('coffee');
-    else spawnItem('hazard', null, null, ['L4', 'Wypowiedzenie', 'Cięcia Kosztów']);
+    else spawnItem('hazard', null, null, ['L4', 'Wypowiedzenie', 'Cięcia Kosztów', 'Wysrywy Olszewskiego']);
   }
 
   function spawnStage3() {
     var r = Math.random();
     if (r < 0.40) spawnItem('bill');
     else if (r < 0.54) spawnItem('coffee');
-    else spawnItem('hazard', null, null, ['L4', 'Wypowiedzenie', 'Cięcia Kosztów']);
+    else spawnItem('hazard', null, null, ['L4', 'Wypowiedzenie', 'Cięcia Kosztów', 'Wysrywy Olszewskiego']);
   }
 
   function collectSpawnEvery() {
@@ -738,10 +741,11 @@
         coffeeUntil = time + COFFEE_TIME;
         if (coffeePace < COFFEE_PACE_MAX) coffeePace += 1;
         play('coffee');
-        addFloat(player.x, player.y - 112, '+50', '#ffd76a');
-        addFloat(player.x, player.y - 132, coffeePace >= COFFEE_PACE_MAX ? 'MAX!' : 'SZYBCIEJ!', '#ffd76a');
-        burst(it.x, it.y, '#ffd76a', 14);
-        burst(it.x, it.y, '#fff3c0', 8);
+        addFloat(player.x, player.y - 112, '+50', '#ffb060');
+        addFloat(player.x, player.y - 132, coffeePace >= COFFEE_PACE_MAX ? 'MAX!' : 'SZYBCIEJ!', '#ffb060');
+        burst(it.x, it.y, '#ff7a30', 12);
+        burst(it.x, it.y, '#ffd76a', 8);
+        burst(it.x, it.y, '#9a9a9a', 6);
         items.splice(i, 1);
         updateHud();
       } else if (it.kind === 'hazard') {
@@ -770,7 +774,7 @@
         particles.push({
           x: player.x + rand(-22, 22), y: player.y - rand(20, 95),
           vx: rand(-16, 16), vy: rand(-50, -10),
-          color: Math.random() < 0.5 ? '#ffd76a' : '#fff3c0',
+          color: Math.random() < 0.4 ? '#ff7a30' : (Math.random() < 0.5 ? '#ffd76a' : '#b0b0b0'),
           life: 0.4 + Math.random() * 0.25, r: 2 + Math.random() * 2,
           pixel: true, grav: -10
         });
@@ -1369,31 +1373,65 @@
     ctx.restore();
   }
 
-  function drawCoffee(ctx, x, y, rot) {
+  function drawCigarette(ctx, x, y, rot) {
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(rot || 0);
-    ctx.fillStyle = '#6a3a22';
-    rounded(ctx, -11, -4, 22, 18, 3);
-    ctx.fill();
-    ctx.strokeStyle = '#c4a07a';
-    ctx.lineWidth = 2.2;
-    ctx.beginPath();
-    ctx.arc(12, 4, 6, -0.8, 0.8);
-    ctx.stroke();
-    ctx.fillStyle = '#f3e4c8';
-    ctx.beginPath();
-    ctx.ellipse(0, -4, 11, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(230,230,230,0.7)';
-    ctx.lineWidth = 1.2;
-    for (var i = 0; i < 3; i++) {
+    ctx.imageSmoothingEnabled = false;
+    /* dym z żarzącego końca */
+    var t = typeof time === 'number' ? time : 0;
+    ctx.strokeStyle = 'rgba(200,200,200,0.7)';
+    ctx.lineWidth = 1.4;
+    ctx.lineCap = 'round';
+    var s;
+    for (s = 0; s < 3; s++) {
+      var ox = -20 - s * 2 + Math.sin(t * 5 + s * 1.3) * 2;
+      var oy = -4 - s * 6;
+      ctx.globalAlpha = 0.55 - s * 0.12;
       ctx.beginPath();
-      var sx = -6 + i * 6;
-      ctx.moveTo(sx, -10);
-      ctx.quadraticCurveTo(sx + 3, -16, sx, -22);
+      ctx.moveTo(-18, -2);
+      ctx.quadraticCurveTo(ox - 4, oy - 2, ox, oy - 8);
       ctx.stroke();
     }
+    ctx.globalAlpha = 1;
+    /* kontur */
+    ctx.fillStyle = '#2a2018';
+    ctx.fillRect(-19, -5, 38, 10);
+    /* biały trzon */
+    ctx.fillStyle = '#f4f1e8';
+    ctx.fillRect(-17, -4, 26, 8);
+    ctx.fillStyle = '#e4e0d6';
+    ctx.fillRect(-17, 2, 26, 2);
+    ctx.fillStyle = '#fffdfa';
+    ctx.fillRect(-17, -4, 26, 2);
+    /* delikatne pierścienie */
+    ctx.fillStyle = 'rgba(0,0,0,0.08)';
+    ctx.fillRect(-8, -4, 1, 8);
+    ctx.fillRect(0, -4, 1, 8);
+    /* pomarańczowy filtr */
+    ctx.fillStyle = '#c44e12';
+    ctx.fillRect(9, -4, 10, 8);
+    ctx.fillStyle = '#e07028';
+    ctx.fillRect(9, -4, 10, 3);
+    ctx.fillStyle = '#a03c0c';
+    ctx.fillRect(9, 3, 10, 1);
+    ctx.fillStyle = '#f0a060';
+    ctx.fillRect(10, -3, 3, 2);
+    /* żarzący koniec */
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = 'rgba(255, 80, 20, 0.55)';
+    ctx.beginPath();
+    ctx.arc(-18, 0, 5 + Math.sin(t * 10) * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = '#ff3a10';
+    ctx.fillRect(-19, -3, 3, 6);
+    ctx.fillStyle = '#ffb040';
+    ctx.fillRect(-19, -2, 2, 3);
+    ctx.fillStyle = '#fff3c0';
+    ctx.fillRect(-19, -1, 1, 1);
+    ctx.imageSmoothingEnabled = true;
     ctx.restore();
   }
 
@@ -1751,9 +1789,10 @@
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       var grd = ctx.createRadialGradient(x, y - 50, 6, x, y - 50, 62);
-      grd.addColorStop(0, 'rgba(255, 230, 100, ' + (0.42 * pulse) + ')');
-      grd.addColorStop(0.45, 'rgba(255, 200, 40, ' + (0.2 * pulse) + ')');
-      grd.addColorStop(1, 'rgba(255, 170, 0, 0)');
+      grd.addColorStop(0, 'rgba(255, 170, 70, ' + (0.46 * pulse) + ')');
+      grd.addColorStop(0.35, 'rgba(255, 120, 40, ' + (0.24 * pulse) + ')');
+      grd.addColorStop(0.7, 'rgba(90, 80, 70, ' + (0.14 * pulse) + ')');
+      grd.addColorStop(1, 'rgba(40, 40, 40, 0)');
       ctx.fillStyle = grd;
       ctx.beginPath();
       ctx.ellipse(x, y - 50, 46, 62, 0, 0, Math.PI * 2);
@@ -1784,15 +1823,17 @@
     ctx.restore();
 
     if (coffeeUntil > time && mode === 'playing') {
-      ctx.strokeStyle = 'rgba(255, 230, 120, 0.65)';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(200, 160, 120, 0.45)';
+      ctx.lineWidth = 1.6;
+      ctx.lineCap = 'round';
       for (var i = 0; i < 3; i++) {
-        var ly = y - 30 - i * 18;
+        var ly = y - 28 - i * 20;
+        var wob = Math.sin(time * 6 + i) * 4;
         ctx.beginPath();
-        ctx.moveTo(x - 28 - i * 2, ly);
-        ctx.lineTo(x - 38 - i * 3, ly + 6);
-        ctx.moveTo(x + 28 + i * 2, ly);
-        ctx.lineTo(x + 38 + i * 3, ly + 6);
+        ctx.moveTo(x - 26, ly);
+        ctx.quadraticCurveTo(x - 34 + wob, ly - 8, x - 30 + wob, ly - 16);
+        ctx.moveTo(x + 26, ly);
+        ctx.quadraticCurveTo(x + 34 - wob, ly - 8, x + 30 - wob, ly - 16);
         ctx.stroke();
       }
     }
@@ -2160,7 +2201,7 @@
     drawBg(ctx);
     items.forEach(function (it) {
       if (it.kind === 'bill') drawBill(ctx, it.x, it.y, it.rot);
-      else if (it.kind === 'coffee') drawCoffee(ctx, it.x, it.y, it.rot * 0.2);
+      else if (it.kind === 'coffee') drawCigarette(ctx, it.x, it.y, it.rot);
       else drawHazard(ctx, it);
     });
     projectiles.forEach(function (pr) { drawHazard(ctx, pr); });
@@ -2431,7 +2472,13 @@
       startTransition({ next: next });
     },
     budzet: function (n) { budget = n; updateHud(); },
-    kawa: function (n) { coffeePace = Math.max(0, n == null ? coffeePace + 1 : n); updateHud(); },
+    papieros: function (n) { coffeePace = Math.max(0, n == null ? coffeePace + 1 : n); updateHud(); },
+    kawa: function (n) { return window.__graDebug.papieros(n); },
+    rzut: function (kind, x, y, label) {
+      if (mode === 'start' || !player) { resetGame(); hideOverlays(); mode = 'playing'; }
+      if (kind === 'papieros' || kind === 'coffee') spawnItem('coffee', x, y);
+      else spawnItem('hazard', x, y, [label || 'L4']);
+    },
     lot: function () {
       ensurePlay();
       budget += 100;
