@@ -21,6 +21,13 @@
   var COFFEE_TIME = 5;
   var INVULN = 1.15;
   var LIVES_MAX = 3;
+  var REGULAMIN_W = 216;
+  var REGULAMIN_H = 132;
+  var REGULAMIN_VY = 78;
+  var REGULAMIN_BANNER = 1.55;
+  var REGULAMIN_LAUGH = 2.15;
+  var REGULAMIN_BONUS = 150;
+  var REGULAMIN_FRAC = 0.7;
 
   var canvas = document.getElementById('game');
   var ctx = canvas.getContext('2d');
@@ -220,6 +227,8 @@
   var raf = 0;
   var shakeT = 0;
   var coffeeSparkT = 0;
+  var regulamin = null;
+  var regulaminDone = { 1: false, 3: false };
   var reduceMotion = false;
   try { reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
   var MAX_PARTICLES = (typeof window !== 'undefined' && (('ontouchstart' in window) || Math.min(screen.width, screen.height) <= 700)) ? 48 : 96;
@@ -258,6 +267,8 @@
     danceSparkT = 0;
     shakeT = 0;
     coffeeSparkT = 0;
+    regulamin = null;
+    regulaminDone = { 1: false, 3: false };
     player = {
       x: GAME_W / 2,
       y: GAME_H - 28,
@@ -342,8 +353,8 @@
     }
     trimParticles();
   }
-  function startShake() {
-    if (!reduceMotion) shakeT = 0.2;
+  function startShake(dur) {
+    if (!reduceMotion) shakeT = dur || 0.2;
   }
 
   function playerSpeed() {
@@ -467,6 +478,7 @@
     items = [];
     arrows = [];
     projectiles = [];
+    regulamin = null;
     keys.left = keys.right = keys.shoot = false;
     playAlarm();
     if (skipDance) {
@@ -513,6 +525,8 @@
     budget = 0;
     keys.left = keys.right = keys.shoot = false;
     spawnT = 0.35;
+    regulamin = null;
+    regulaminDone[3] = false;
     if (lives < LIVES_MAX) {
       lives += 1;
       addFloat(player.x, player.y - 112, '+1 życie', '#ffd76a');
@@ -643,6 +657,155 @@
     }
   }
 
+  function regulaminBlocking() {
+    return !!(regulamin && (regulamin.phase === 'banner' || regulamin.phase === 'fall'));
+  }
+
+  function startRegulamin(opts) {
+    opts = opts || {};
+    items = [];
+    if (stage === 1 || stage === 3) regulaminDone[stage] = true;
+    var w = REGULAMIN_W, h = REGULAMIN_H;
+    var pad = 14;
+    var leftX = w / 2 + pad;
+    var rightX = GAME_W - w / 2 - pad;
+    var x = opts.x != null ? opts.x : (Math.random() < 0.5 ? leftX : rightX);
+    regulamin = {
+      phase: 'banner',
+      t: 0,
+      x: x,
+      y: -h / 2 - 6,
+      w: w,
+      h: h,
+      vy: REGULAMIN_VY,
+      rot: 0,
+      vr: rand(-0.1, 0.1),
+      hit: false,
+      laugh: null
+    };
+    playAlarm();
+    if (!reduceMotion) shakeT = Math.max(shakeT, 0.18);
+    spawnT = 0.45;
+    updateHud();
+  }
+
+  function maybeStartRegulamin() {
+    if (mode !== 'playing' || (stage !== 1 && stage !== 3)) return;
+    if (regulaminBlocking()) return;
+    if (regulaminDone[stage]) return;
+    if (budget < collectGoal() * REGULAMIN_FRAC) return;
+    startRegulamin();
+  }
+
+  function startRegulaminLaugh() {
+    var fromLeft = regulamin.x < GAME_W / 2;
+    var x0 = fromLeft ? -60 : GAME_W + 60;
+    var x1 = fromLeft ? GAME_W + 80 : -80;
+    regulamin.laugh = {
+      t: 0,
+      dur: REGULAMIN_LAUGH,
+      x0: x0, x1: x1,
+      y0: 230,
+      x: x0, y: 230,
+      dir: fromLeft ? 1 : -1,
+      arc: -46
+    };
+  }
+
+  function spawnRegulaminLoot(lost) {
+    var g = safeGeom();
+    var n = Math.min(12, Math.max(4, Math.round(lost / 100)));
+    var i;
+    for (i = 0; i < n; i++) {
+      var ang = -Math.PI * 0.85 + Math.random() * (Math.PI * 0.7);
+      var dist = 160 + Math.random() * 240;
+      flyers.push({
+        x: g.doorX, y: g.doorY,
+        x0: g.doorX + rand(-3, 3), y0: g.doorY + rand(-3, 3),
+        x1: g.doorX + Math.cos(ang) * dist,
+        y1: g.doorY + Math.sin(ang) * dist - 30,
+        cx: g.doorX + Math.cos(ang) * dist * 0.45 + rand(-24, 24),
+        cy: g.doorY - rand(70, 150),
+        t: 0,
+        dur: 0.95 + Math.random() * 0.35 + i * 0.04,
+        rot: rand(-0.8, 0.8),
+        vr: rand(-4.2, 4.2),
+        value: 0,
+        flee: true
+      });
+    }
+    bumpSafe();
+  }
+
+  function hitRegulamin() {
+    if (!regulamin || regulamin.phase !== 'fall') return;
+    var lost = Math.round((budget * 0.5) / 100) * 100;
+    lost = Math.max(0, Math.min(budget, lost));
+    if (lost > 0) {
+      budget -= lost;
+      spawnRegulaminLoot(lost);
+    }
+    play('hit');
+    play('steal');
+    startShake(0.42);
+    addFloat(player.x, player.y - 124, '−' + lost + '$', '#ff6b6b');
+    burst(regulamin.x, regulamin.y, '#ff6b6b', 18);
+    burst(regulamin.x, regulamin.y, '#ffd76a', 10);
+    startRegulaminLaugh();
+    regulamin.hit = true;
+    regulamin.phase = 'done';
+    spawnT = 0.5;
+    updateHud();
+  }
+
+  function updateRegulamin(dt) {
+    if (!regulamin) return;
+    if (regulamin.laugh) {
+      var L = regulamin.laugh;
+      L.t += dt;
+      var u = Math.min(1, L.t / L.dur);
+      var e = u * u * (3 - 2 * u);
+      L.x = L.x0 + (L.x1 - L.x0) * e;
+      L.y = L.y0 + Math.sin(u * Math.PI) * L.arc + Math.sin(L.t * 9) * 3;
+      if (L.t >= L.dur) regulamin.laugh = null;
+    }
+    if (regulamin.phase === 'banner') {
+      regulamin.t += dt;
+      if (regulamin.t >= REGULAMIN_BANNER) {
+        regulamin.phase = 'fall';
+        regulamin.t = 0;
+        regulamin.y = -regulamin.h / 2 - 4;
+      }
+    } else if (regulamin.phase === 'fall') {
+      regulamin.t += dt;
+      regulamin.y += regulamin.vy * dt;
+      regulamin.rot += regulamin.vr * dt;
+      if (mode === 'playing' && player) {
+        var box = {
+          x: regulamin.x - regulamin.w / 2,
+          y: regulamin.y - regulamin.h / 2,
+          w: regulamin.w,
+          h: regulamin.h
+        };
+        if (aabb(playerHitbox(), box)) {
+          hitRegulamin();
+        }
+      }
+      if (regulamin.phase === 'fall' && regulamin.y - regulamin.h / 2 > GAME_H) {
+        addFloat(GAME_W / 2, GAME_H * 0.42, 'Uniknięte!', '#b8ff3d');
+        score += REGULAMIN_BONUS;
+        addFloat(GAME_W / 2, GAME_H * 0.42 + 28, '+' + REGULAMIN_BONUS, '#b8ff3d');
+        play('collect');
+        burst(GAME_W / 2, GAME_H * 0.5, '#b8ff3d', 16);
+        burst(GAME_W / 2, GAME_H * 0.5, '#ffd76a', 8);
+        regulamin.phase = 'done';
+        spawnT = 0.45;
+        updateHud();
+      }
+    }
+    if (regulamin && regulamin.phase === 'done' && !regulamin.laugh) regulamin = null;
+  }
+
   /* ---------- aktualizacja ---------- */
   function update(dt) {
     time += dt;
@@ -668,15 +831,20 @@
     var i, it, hb, box;
 
     if (mode === 'playing' && (stage === 1 || stage === 3)) {
-      spawnEvery = collectSpawnEvery();
-      spawnT -= dt;
-      if (spawnT <= 0 && items.length < 14) {
-        if (stage === 3) spawnStage3();
-        else spawnStage1();
-        spawnT = spawnEvery * rand(0.75, 1.15);
+      maybeStartRegulamin();
+      if (!regulaminBlocking()) {
+        spawnEvery = collectSpawnEvery();
+        spawnT -= dt;
+        if (spawnT <= 0 && items.length < 14) {
+          if (stage === 3) spawnStage3();
+          else spawnStage1();
+          spawnT = spawnEvery * rand(0.75, 1.15);
+        }
+        if (budget >= collectGoal()) startTransition();
       }
-      if (budget >= collectGoal()) startTransition();
     }
+
+    updateRegulamin(dt);
 
     if (mode === 'transition') {
       transitionT -= dt;
@@ -1530,7 +1698,10 @@
       f.y = inv * inv * f.y0 + 2 * inv * u * f.cy + u * u * f.y1;
       f.rot += f.vr * dt;
       if (f.t >= f.dur) {
-        if (f.steal) {
+        if (f.flee) {
+          flyers.splice(i, 1);
+          continue;
+        } else if (f.steal) {
           burst(f.x1, f.y1, '#ffd76a', 8);
           burst(f.x1, f.y1, '#3dff7a', 5);
         } else {
@@ -2188,6 +2359,225 @@
     ctx.fillRect(0, 0, GAME_W, GAME_H);
   }
 
+  function drawRegulaminDoc(ctx, it) {
+    ctx.save();
+    ctx.translate(it.x, it.y);
+    ctx.rotate(it.rot * 0.18);
+    var w = it.w, h = it.h;
+    ctx.fillStyle = 'rgba(0,0,0,0.38)';
+    rounded(ctx, -w / 2 + 5, -h / 2 + 7, w, h, 7);
+    ctx.fill();
+    ctx.fillStyle = '#2a0c10';
+    rounded(ctx, -w / 2, -h / 2, w, h, 7);
+    ctx.fill();
+    ctx.fillStyle = '#7a1a22';
+    rounded(ctx, -w / 2 + 5, -h / 2 + 5, w - 10, h - 10, 5);
+    ctx.fill();
+    /* arkusz */
+    ctx.fillStyle = '#e6d7b8';
+    rounded(ctx, -w / 2 + 14, -h / 2 + 36, w - 28, h - 50, 3);
+    ctx.fill();
+    ctx.fillStyle = '#f3ead4';
+    rounded(ctx, -w / 2 + 14, -h / 2 + 36, w - 32, h - 54, 3);
+    ctx.fill();
+    /* linie tekstu */
+    var i;
+    ctx.fillStyle = 'rgba(90,50,36,0.28)';
+    for (i = 0; i < 5; i++) {
+      ctx.fillRect(-w / 2 + 24, -h / 2 + 70 + i * 11, w - 62 - (i % 3) * 10, 3);
+    }
+    /* pasek tytułu */
+    ctx.fillStyle = '#9a1420';
+    ctx.fillRect(-w / 2 + 14, -h / 2 + 36, w - 28, 28);
+    ctx.fillStyle = '#fff6ea';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = fontTiny(20);
+    ctx.fillText('Nowy regulamin', 0, -h / 2 + 50);
+    ctx.font = fontTiny(24);
+    ctx.fillStyle = '#2a0c10';
+    ctx.fillText('premiowy', 0, -h / 2 + 78);
+    /* pieczęć */
+    ctx.save();
+    ctx.translate(w / 2 - 38, h / 2 - 32);
+    ctx.rotate(-0.3);
+    ctx.strokeStyle = '#c01820';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 16, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 0, 12, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = '#c01820';
+    ctx.font = fontTiny(11);
+    ctx.fillText('AKT', 0, 1);
+    ctx.restore();
+    /* ostrzegawcze rogi */
+    ctx.fillStyle = '#ffd76a';
+    ctx.fillRect(-w / 2 + 5, -h / 2 + 5, 18, 5);
+    ctx.fillRect(-w / 2 + 5, -h / 2 + 5, 5, 18);
+    ctx.fillRect(w / 2 - 23, -h / 2 + 5, 18, 5);
+    ctx.fillRect(w / 2 - 10, -h / 2 + 5, 5, 18);
+    ctx.restore();
+  }
+
+  function drawRegulaminLaugh(ctx, L) {
+    var x = L.x, y = L.y;
+    ctx.save();
+    ctx.translate(x, y);
+    if (L.dir < 0) ctx.scale(-1, 1);
+    /* mini-ośmiornica + jetpack */
+    var t = L.t;
+    var i, wave;
+    for (i = 0; i < 5; i++) {
+      wave = Math.sin(t * 10 + i * 0.9) * 7;
+      ctx.strokeStyle = i % 2 ? '#6b2f9a' : '#4e1f78';
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo((i - 2) * 6, 16);
+      ctx.quadraticCurveTo((i - 2) * 10 + wave, 28, (i - 2) * 12 + wave, 38);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#3a4550';
+    rounded(ctx, -14, 8, 28, 20, 4);
+    ctx.fill();
+    ctx.fillStyle = '#1e252c';
+    rounded(ctx, -11, 12, 8, 12, 2);
+    ctx.fill();
+    rounded(ctx, 3, 12, 8, 12, 2);
+    ctx.fill();
+    var fl = 8 + Math.abs(Math.sin(t * 22)) * 8;
+    ctx.fillStyle = '#ff7a20';
+    ctx.beginPath();
+    ctx.moveTo(-10, 24);
+    ctx.lineTo(-6, 24 + fl);
+    ctx.lineTo(-2, 24);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(2, 24);
+    ctx.lineTo(6, 24 + fl);
+    ctx.lineTo(10, 24);
+    ctx.fill();
+    ctx.fillStyle = '#ffd76a';
+    ctx.beginPath();
+    ctx.moveTo(-8, 24);
+    ctx.lineTo(-6, 24 + fl * 0.55);
+    ctx.lineTo(-4, 24);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(4, 24);
+    ctx.lineTo(6, 24 + fl * 0.55);
+    ctx.lineTo(8, 24);
+    ctx.fill();
+    ctx.fillStyle = '#6e33a8';
+    ctx.beginPath();
+    ctx.ellipse(0, 10, 28, 16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#8a4cc4';
+    ctx.beginPath();
+    ctx.ellipse(0, 4, 24, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    /* worek z kasą */
+    ctx.fillStyle = '#8a5a22';
+    ctx.beginPath();
+    ctx.moveTo(22, 8);
+    ctx.lineTo(38, 8);
+    ctx.lineTo(42, 28);
+    ctx.quadraticCurveTo(30, 36, 18, 28);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#c49a3a';
+    ctx.fillRect(26, 4, 8, 6);
+    ctx.fillStyle = '#ffe28a';
+    ctx.font = fontArcade(8);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('$', 30, 20);
+    drawCtoSprite(ctx, imgCto, 0, -2, 62, drawFallbackCto, false);
+    ctx.restore();
+    /* dymek — bez lustra, żeby tekst był czytelny */
+    var bx = x + L.dir * 52;
+    var by = y - 72;
+    ctx.save();
+    ctx.fillStyle = '#fffaf0';
+    ctx.strokeStyle = '#2a2018';
+    ctx.lineWidth = 2;
+    rounded(ctx, bx - 38, by - 20, 76, 36, 10);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + L.dir * 16, y - 40);
+    ctx.lineTo(bx - L.dir * 8, by + 14);
+    ctx.lineTo(bx - L.dir * 18, by + 14);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#2a2018';
+    ctx.font = fontTiny(22);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Ha ha!', bx, by - 1);
+    ctx.restore();
+  }
+
+  function drawRegulaminBanner(ctx) {
+    if (!regulamin || (regulamin.phase !== 'banner' && !(regulamin.phase === 'fall' && regulamin.t < 0.28))) return;
+    var fade = 1;
+    if (regulamin.phase === 'fall') fade = Math.max(0, 1 - regulamin.t / 0.28);
+    var pulse = 0.18 + 0.2 * Math.abs(Math.sin(time * 12));
+    ctx.save();
+    ctx.globalAlpha = fade;
+    ctx.fillStyle = 'rgba(160,0,18,' + pulse + ')';
+    ctx.fillRect(0, 0, GAME_W, GAME_H);
+    var by = 86;
+    var bw = GAME_W - 48;
+    var bh = 96;
+    var bx = 24;
+    ctx.fillStyle = 'rgba(20,0,4,0.88)';
+    rounded(ctx, bx, by, bw, bh, 10);
+    ctx.fill();
+    ctx.strokeStyle = '#ff3040';
+    ctx.lineWidth = 3;
+    rounded(ctx, bx, by, bw, bh, 10);
+    ctx.stroke();
+    /* paski ostrzegawcze */
+    var i, stripeW = 14;
+    ctx.save();
+    ctx.beginPath();
+    rounded(ctx, bx + 4, by + 4, bw - 8, 10, 3);
+    ctx.clip();
+    for (i = -2; i < 40; i++) {
+      ctx.fillStyle = i % 2 ? '#ffd76a' : '#1a1a1a';
+      ctx.fillRect(bx + i * stripeW + (time * 40) % (stripeW * 2), by + 4, stripeW, 10);
+    }
+    ctx.restore();
+    ctx.save();
+    ctx.beginPath();
+    rounded(ctx, bx + 4, by + bh - 14, bw - 8, 10, 3);
+    ctx.clip();
+    for (i = -2; i < 40; i++) {
+      ctx.fillStyle = i % 2 ? '#ffd76a' : '#1a1a1a';
+      ctx.fillRect(bx + i * stripeW - (time * 40) % (stripeW * 2), by + bh - 14, stripeW, 10);
+    }
+    ctx.restore();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+    ctx.lineWidth = 4;
+    ctx.font = fontArcade(22);
+    ctx.fillStyle = '#ffd76a';
+    ctx.strokeText('UWAGA!', GAME_W / 2, by + 40);
+    ctx.fillText('UWAGA!', GAME_W / 2, by + 40);
+    ctx.font = fontTiny(26);
+    ctx.fillStyle = '#fff6ea';
+    ctx.strokeText('Nowy regulamin premiowy', GAME_W / 2, by + 70);
+    ctx.fillText('Nowy regulamin premiowy', GAME_W / 2, by + 70);
+    ctx.restore();
+  }
+
   function draw() {
     var ox = 0, oy = 0;
     if (shakeT > 0 && !reduceMotion) {
@@ -2206,10 +2596,14 @@
     });
     projectiles.forEach(function (pr) { drawHazard(ctx, pr); });
     arrows.forEach(function (ar) { drawArrow(ctx, ar); });
+    if (regulamin && (regulamin.phase === 'fall' || (regulamin.phase === 'banner' && regulamin.t > REGULAMIN_BANNER - 0.28))) {
+      drawRegulaminDoc(ctx, regulamin);
+    }
     if (boss) drawBoss(ctx);
     if (player) drawPlayer(ctx);
     drawSafe(ctx);
     drawFlyers(ctx);
+    if (regulamin && regulamin.laugh) drawRegulaminLaugh(ctx, regulamin.laugh);
 
     particles.forEach(function (p) {
       ctx.globalAlpha = Math.max(0, p.life * 3);
@@ -2245,6 +2639,8 @@
       ctx.fillText(f.text, f.x, f.y);
       ctx.globalAlpha = 1;
     });
+
+    drawRegulaminBanner(ctx);
 
     if (mode === 'transition') {
       ctx.textAlign = 'center';
@@ -2479,6 +2875,30 @@
       if (kind === 'papieros' || kind === 'coffee') spawnItem('coffee', x, y);
       else spawnItem('hazard', x, y, [label || 'L4']);
     },
+    regulamin: function (opts) {
+      ensurePlay();
+      hideOverlays();
+      mode = 'playing';
+      if (stage !== 1 && stage !== 3) {
+        stage = 1;
+        hasBow = false;
+        boss = null;
+        transPhase = '';
+        dance = null;
+      }
+      if (budget < collectGoal() * REGULAMIN_FRAC) {
+        budget = Math.round(collectGoal() * REGULAMIN_FRAC / 100) * 100;
+      }
+      startRegulamin(opts || {});
+      opts = opts || {};
+      if (opts.skipBanner || opts.y != null) {
+        regulamin.phase = 'fall';
+        regulamin.t = 0;
+        if (opts.y != null) regulamin.y = opts.y;
+        if (opts.x != null) regulamin.x = opts.x;
+      }
+      updateHud();
+    },
     lot: function () {
       ensurePlay();
       budget += 100;
@@ -2495,7 +2915,14 @@
         pace: paceMul(), pendingBoss: pendingBoss,
         projectiles: projectiles.length,
         laser: !!(boss && boss.laser),
-        dance: dance ? { kind: dance.kind, t: dance.t, looping: dance.looping } : null
+        dance: dance ? { kind: dance.kind, t: dance.t, looping: dance.looping } : null,
+        playerX: player ? player.x : null,
+        regulamin: regulamin ? {
+          phase: regulamin.phase, t: regulamin.t,
+          x: regulamin.x, y: regulamin.y,
+          hit: !!regulamin.hit, laugh: !!(regulamin.laugh)
+        } : null,
+        regulaminDone: { 1: !!regulaminDone[1], 3: !!regulaminDone[3] }
       };
     }
   };

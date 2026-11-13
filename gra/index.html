@@ -159,6 +159,15 @@
     .app { padding: 0.4rem 0.45rem 0.35rem; padding-right: 3.8rem; }
     .hud { font-size: 1.02rem; gap: 0.2rem 0.5rem; }
   }
+  #overlay-start .card { max-height: 100%; overflow-y: auto; }
+  @media (max-width: 480px), (max-height: 900px) {
+    #overlay-start .card { padding: 0.7rem 0.85rem 0.85rem; }
+    #overlay-start .card h1 { margin-bottom: 0.35rem; font-size: clamp(0.52rem, 2.1vw, 0.85rem); line-height: 1.5; }
+    #overlay-start .card .lead { font-size: 1.08rem; margin-bottom: 0.4rem; }
+    #overlay-start .card ul { font-size: 1.04rem; line-height: 1.28; margin: 0 0 0.65rem; }
+    #overlay-start .card li { margin: 0.2rem 0; }
+    #overlay-start .btn { padding: 0.75rem 1rem; }
+  }
   #overlay-win {
     align-items: flex-start;
     padding-top: 0.45rem;
@@ -218,9 +227,9 @@
         <p class="lead">Zbierz budżet i pokonaj bossa — dwa razy.</p>
         <ul>
           <li><strong>Ruch:</strong> strzałki lub A/D (na telefonie przyciski). Strzał: spacja (10 $, zawsze można).</li>
-          <li><strong>Etap 1:</strong> łap banknoty (+100 $) i papierosy (+50 pkt, 5 s szybkości Krzysztofa i stałe przyspieszenie gry). Unikaj: L4, Wypowiedzenie, Cięcia Kosztów, Wysrywy Olszewskiego — 3 życia.</li>
+          <li><strong>Etap 1:</strong> łap banknoty (+100 $) i papierosy (+50 pkt, 5 s szybkości Krzysztofa i stałe przyspieszenie gry). Unikaj: L4, Wypowiedzenie, Cięcia Kosztów, Wysrywy Olszewskiego — 3 życia. Po 700 $: Nowy regulamin premiowy (połowa kasy).</li>
           <li><strong>Etap 2:</strong> po 1000 $ walka z ośmiornicą Sales Director. Pokonana ukradnie cały budżet z sejfu.</li>
-          <li><strong>Etap 3:</strong> zbierz ponownie, tym razem 3000 $ (trudniej). Na start +1 życie (maks. 3).</li>
+          <li><strong>Etap 3:</strong> zbierz ponownie 3000 $ (trudniej). Na start +1 życie (maks. 3). Po 2100 $ znowu regulamin.</li>
           <li><strong>Etap 4:</strong> Sales Director wraca w mechucie. Pokonaj ją, żeby wygrać.</li>
         </ul>
         <button type="button" class="btn" id="btn-play">Graj</button>
