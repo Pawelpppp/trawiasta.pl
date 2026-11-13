@@ -5,6 +5,7 @@
   var LINKS = [
     ['/', 'Strona główna'],
     ['/energia/', 'Energia'],
+    ['/gra/', 'Gra'],
     ['/licznik/', 'Licznik'],
     ['/logowanie/', 'Logowanie']
   ];
