@@ -21,9 +21,11 @@
   var COFFEE_TIME = 5;
   var INVULN = 1.15;
   var LIVES_MAX = 3;
-  var REGULAMIN_W = 216;
+  var REGULAMIN_W = 182;
   var REGULAMIN_H = 132;
-  var REGULAMIN_VY = 78;
+  var REGULAMIN_VY = 148;
+  var REGULAMIN_SWAY = 3.8;
+  var REGULAMIN_PAD = 12;
   var REGULAMIN_BANNER = 1.55;
   var REGULAMIN_LAUGH = 2.15;
   var REGULAMIN_BONUS = 150;
@@ -663,13 +665,20 @@
 
   function startRegulamin(opts) {
     opts = opts || {};
-    items = [];
+    var i;
+    for (i = items.length - 1; i >= 0; i--) {
+      if (items[i].kind === 'bill' || items[i].kind === 'coffee') items.splice(i, 1);
+    }
     if (stage === 1 || stage === 3) regulaminDone[stage] = true;
     var w = REGULAMIN_W, h = REGULAMIN_H;
-    var pad = 14;
-    var leftX = w / 2 + pad;
-    var rightX = GAME_W - w / 2 - pad;
-    var x = opts.x != null ? opts.x : (Math.random() < 0.5 ? leftX : rightX);
+    var minX = w / 2 + REGULAMIN_PAD;
+    var maxX = GAME_W - w / 2 - REGULAMIN_PAD;
+    var cx = GAME_W / 2;
+    var amp = Math.max(8, cx - minX);
+    var x = opts.x != null ? Math.max(minX, Math.min(maxX, opts.x)) : (Math.random() < 0.5 ? minX : maxX);
+    var ratio = amp > 0 ? (x - cx) / amp : 0;
+    if (ratio > 1) ratio = 1;
+    if (ratio < -1) ratio = -1;
     regulamin = {
       phase: 'banner',
       t: 0,
@@ -679,13 +688,17 @@
       h: h,
       vy: REGULAMIN_VY,
       rot: 0,
-      vr: rand(-0.1, 0.1),
+      vr: rand(-0.08, 0.08),
+      cx: cx,
+      amp: amp,
+      omega: (Math.PI * 2) / REGULAMIN_SWAY,
+      phase0: Math.asin(ratio),
       hit: false,
       laugh: null
     };
     playAlarm();
     if (!reduceMotion) shakeT = Math.max(shakeT, 0.18);
-    spawnT = 0.45;
+    spawnT = 0.28;
     updateHud();
   }
 
@@ -779,7 +792,10 @@
     } else if (regulamin.phase === 'fall') {
       regulamin.t += dt;
       regulamin.y += regulamin.vy * dt;
-      regulamin.rot += regulamin.vr * dt;
+      var sway = Math.sin(regulamin.t * regulamin.omega + regulamin.phase0);
+      var csway = Math.cos(regulamin.t * regulamin.omega + regulamin.phase0);
+      regulamin.x = regulamin.cx + sway * regulamin.amp;
+      regulamin.rot = csway * 0.16 + regulamin.vr * regulamin.t;
       if (mode === 'playing' && player) {
         var box = {
           x: regulamin.x - regulamin.w / 2,
@@ -832,16 +848,17 @@
 
     if (mode === 'playing' && (stage === 1 || stage === 3)) {
       maybeStartRegulamin();
-      if (!regulaminBlocking()) {
-        spawnEvery = collectSpawnEvery();
-        spawnT -= dt;
-        if (spawnT <= 0 && items.length < 14) {
-          if (stage === 3) spawnStage3();
-          else spawnStage1();
-          spawnT = spawnEvery * rand(0.75, 1.15);
-        }
-        if (budget >= collectGoal()) startTransition();
+      spawnEvery = collectSpawnEvery();
+      if (regulaminBlocking()) spawnEvery *= 1.3;
+      spawnT -= dt;
+      if (spawnT <= 0 && items.length < 14) {
+        if (regulaminBlocking()) {
+          spawnItem('hazard', null, null, ['L4', 'Wypowiedzenie', 'Cięcia Kosztów', 'Wysrywy Olszewskiego']);
+        } else if (stage === 3) spawnStage3();
+        else spawnStage1();
+        spawnT = spawnEvery * rand(0.75, 1.15);
       }
+      if (!regulaminBlocking() && budget >= collectGoal()) startTransition();
     }
 
     updateRegulamin(dt);
