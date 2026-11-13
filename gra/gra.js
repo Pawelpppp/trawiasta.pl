@@ -1286,6 +1286,48 @@
     fallback(ctx, cx, cy, r);
   }
 
+  var _ctoTint = null;
+  /* Wycinka CTO (przezroczyste tło) — bez owalu, ostre piksele. chinY = miejsce styku z ciałem. */
+  function drawCtoSprite(ctx, img, cx, chinY, dh, fallback, flashing) {
+    dh = dh || 104;
+    var iw = img && (img.naturalWidth || img.width);
+    var ih = img && (img.naturalHeight || img.height);
+    if (!iw || !ih) {
+      fallback(ctx, cx, chinY - dh * 0.42, dh * 0.36);
+      if (flashing) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(255, 36, 50, 0.45)';
+        ctx.beginPath();
+        ctx.ellipse(cx, chinY - dh * 0.42, dh * 0.36, dh * 0.42, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      return;
+    }
+    var dw = dh * (iw / ih);
+    var dx = Math.round(cx - dw / 2);
+    var dy = Math.round(chinY - dh * 0.78);
+    var tw = Math.round(dw), th = Math.round(dh);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, dx, dy, tw, th);
+    if (flashing) {
+      if (!_ctoTint) _ctoTint = document.createElement('canvas');
+      if (_ctoTint.width !== tw) _ctoTint.width = tw;
+      if (_ctoTint.height !== th) _ctoTint.height = th;
+      var g = _ctoTint.getContext('2d');
+      g.imageSmoothingEnabled = false;
+      g.globalCompositeOperation = 'source-over';
+      g.clearRect(0, 0, tw, th);
+      g.drawImage(img, 0, 0, tw, th);
+      g.globalCompositeOperation = 'source-atop';
+      g.fillStyle = 'rgba(255, 36, 50, 0.55)';
+      g.fillRect(0, 0, tw, th);
+      g.globalCompositeOperation = 'source-over';
+      ctx.drawImage(_ctoTint, dx, dy);
+    }
+    ctx.imageSmoothingEnabled = true;
+  }
+
   /* Wycinka Krzysztofa (już z przezroczystym tłem) — bez owalnego przycięcia, ostre piksele. */
   function drawKrzysztofSprite(ctx, img, cx, collarY, fallback) {
     var iw = img && (img.naturalWidth || img.width);
@@ -1889,7 +1931,7 @@
       ctx.fill();
     }
 
-    drawHead(ctx, imgCto, x, y - 28, 36, drawFallbackCto);
+    drawCtoSprite(ctx, imgCto, x, y - 16, 108, drawFallbackCto, flashing);
 
     if (defeated) {
       /* komiksowy zawrót głowy i dym */
@@ -1899,7 +1941,7 @@
       for (st = 0; st < 3; st++) {
         ang = t * 3 + st * 2.1;
         ctx.beginPath();
-        ctx.arc(x + Math.cos(ang) * 34, y - 58 + Math.sin(ang * 1.3) * 6, 4, 0, Math.PI * 2);
+        ctx.arc(x + Math.cos(ang) * 40, y - 92 + Math.sin(ang * 1.3) * 6, 4, 0, Math.PI * 2);
         ctx.stroke();
       }
       ctx.fillStyle = 'rgba(180,180,190,0.45)';
@@ -1912,7 +1954,7 @@
       return;
     }
 
-    drawBossHp(ctx, x, y - 82);
+    drawBossHp(ctx, x, y - 122);
   }
 
   function drawBossHp(ctx, x, by) {
@@ -2034,13 +2076,13 @@
       ctx.fillRect(x - 90, y - 50, 180, 150);
     }
 
-    drawHead(ctx, imgCto, x, y - 62, 32, drawFallbackCto);
+    drawCtoSprite(ctx, imgCto, x, y - 38, 96, drawFallbackCto, flashing);
 
-    /* hełm-obręcz wokół szyi */
+    /* hełm-obręcz wokół szyi / dolna krawędź kokpitu */
     pix(ctx, x - 22, y - 42, 44, 8, steel);
     pix(ctx, x - 20, y - 41, 8, 6, acc);
 
-    drawBossHp(ctx, x, y - 112);
+    drawBossHp(ctx, x, y - 136);
     ctx.imageSmoothingEnabled = true;
   }
 
@@ -2191,8 +2233,8 @@
           ctx.lineWidth = 4;
           ctx.font = fontTiny(30);
           ctx.fillStyle = '#ff6b6b';
-          ctx.strokeText('CTO zabrał cały budżet!', GAME_W / 2, 220);
-          ctx.fillText('CTO zabrał cały budżet!', GAME_W / 2, 220);
+          ctx.strokeText('CTO zabrała cały budżet!', GAME_W / 2, 220);
+          ctx.fillText('CTO zabrała cały budżet!', GAME_W / 2, 220);
         }
       } else {
         var pulse = 0.18 + 0.14 * Math.abs(Math.sin(time * 10));
@@ -2203,7 +2245,7 @@
         ctx.strokeStyle = 'rgba(0,0,0,0.55)';
         ctx.lineWidth = 4;
         var etap = pendingBoss === 4 ? 'ETAP 4' : 'ETAP 2';
-        var sub = pendingBoss === 4 ? 'CTO w mechucie' : 'Walka z bossem CTO';
+        var sub = pendingBoss === 4 ? 'CTO w mechucie' : 'Walka z CTO';
         ctx.strokeText(etap, GAME_W / 2, GAME_H / 2 - 18);
         ctx.fillText(etap, GAME_W / 2, GAME_H / 2 - 18);
         ctx.font = fontTiny(26);
