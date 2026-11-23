@@ -2759,6 +2759,7 @@
   }
 
   function startPlay() {
+    if (window.trawiastaZdarzenie) window.trawiastaZdarzenie('gra-start', 'Start gry (/gra)');
     audioEnsure();
     resetGame();
     hideOverlays();
