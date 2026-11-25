@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Mapa Białystok | trawiasta.pl</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    background: #0a0c0a;
+    color: #e8f0e0;
+    min-height: 100%;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    font-family: system-ui, sans-serif;
+  }
+  #wrap {
+    width: min(640px, 100vw);
+    max-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  canvas {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    background: #000;
+  }
+  #pad {
+    display: none;
+    margin: 0.6rem 0 0.8rem;
+    grid-template-columns: 64px 64px 64px;
+    grid-template-rows: 64px 64px;
+    gap: 0.35rem;
+    touch-action: none;
+  }
+  #pad button {
+    width: 64px; height: 64px;
+    border: 3px solid #3a2a12;
+    background: #c87828;
+    color: #1a1008;
+    font-size: 22px;
+    font-weight: 800;
+    border-radius: 8px;
+    image-rendering: pixelated;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+  }
+  #pad button:active, #pad button.held { background: #f0a848; }
+  #pad .up { grid-column: 2; grid-row: 1; }
+  #pad .left { grid-column: 1; grid-row: 2; }
+  #pad .down { grid-column: 2; grid-row: 2; }
+  #pad .right { grid-column: 3; grid-row: 2; }
+  @media (max-width: 700px), (pointer: coarse) {
+    #pad { display: grid; }
+    body { justify-content: flex-start; padding-top: 0.4rem; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c" width="640" height="640" aria-label="Mapa Białegostoku"></canvas>
+  <div id="pad">
+    <button type="button" class="up" data-dir="up" aria-label="Góra">▲</button>
+    <button type="button" class="left" data-dir="left" aria-label="Lewo">◀</button>
+    <button type="button" class="down" data-dir="down" aria-label="Dół">▼</button>
+    <button type="button" class="right" data-dir="right" aria-label="Prawo">▶</button>
+  </div>
+</div>
+<script>
+(function () {
+  "use strict";
+
+  var MAP = 160;
+  var VIEW = 80;
+  var SCALE = 640 / VIEW; // 8
+  var ROAD = "#d4843c";
+  var ROAD_RGB = [212, 132, 60];
+  var GRASS_A = "#3c7a2c";
+  var GRASS_B = "#2f6424";
+  var PARK_A = "#347428";
+  var PARK_B = "#28601e";
+  var RAIL = "#6a6a6a";
+  var RAIL_DARK = "#4a4a4a";
+  var RAIL_TIE = "#5a4a3a";
+  var WATER = "#2a6aaa";
+  var WATER_EDGE = "#1a4a7a";
+  var WATER_HI = "#7ab0d8";
+  var TREE = "#1e5a18";
+  var TREE_DARK = "#144010";
+  var TRUNK = "#5a3a1a";
+  var BUILDING = "#8a8a8a";
+  var BUILDING_DK = "#6e6e6e";
+  var WINDOW = "#2e3a4a";
+  var ROOF = "#8a4a20";
+  var ROOF_DK = "#6a3414";
+  var FRAME = "#000000";
+  var TEXT = "#f0e8d0";
+  var LINE = "#e8c060";
+  var EDGE = "#b46828";
+  var LAMP = "#f0e080";
+  var POLE = "#2a2a2a";
+  var CAR_RED = "#c02020";
+  var CAR_RED_DK = "#701010";
+  var CAR_RED_HI = "#e84848";
+  var STEP_MS = 80;
+
+  var canvas = document.getElementById("c");
+  var ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+
+  var world = document.createElement("canvas");
+  world.width = MAP;
+  world.height = MAP;
+  var wctx = world.getContext("2d");
+  wctx.imageSmoothingEnabled = false;
+
+  var roads = document.createElement("canvas");
+  roads.width = MAP;
+  roads.height = MAP;
+  var rctx = roads.getContext("2d", { willReadFrequently: true });
+  rctx.imageSmoothingEnabled = false;
+
+  var FONT = {
+    A: ["010","101","111","101","101"],
+    C: ["111","100","100","100","111"],
+    E: ["111","100","111","100","111"],
+    G: ["111","100","101","101","111"],
+    I: ["111","010","010","010","111"],
+    J: ["111","001","001","101","010"],
+    K: ["101","101","110","101","101"],
+    L: ["100","100","100","100","111"],
+    "Ł":["101","110","100","100","111"],
+    N: ["101","111","101","101","101"],
+    O: ["111","101","101","101","111"],
+    P: ["111","101","111","100","100"],
+    R: ["111","101","111","110","101"],
+    S: ["111","100","111","001","111"],
+    T: ["111","010","010","010","010"],
+    U: ["101","101","101","101","111"],
+    W: ["101","101","101","101","010"],
+    Y: ["101","101","010","010","010"],
+    Z: ["111","001","010","100","111"]
+  };
+
+  function pix(c, x, y, color) {
+    if (x < 0 || y < 0 || x >= MAP || y >= MAP) return;
+    c.fillStyle = color;
+    c.fillRect(x, y, 1, 1);
+  }
+
+  function rect(c, x, y, w, h, color) {
+    c.fillStyle = color;
+    c.fillRect(x, y, w, h);
+  }
+
+  function inMap(x, y) {
+    return x >= 1 && y >= 1 && x <= MAP - 2 && y <= MAP - 2;
+  }
+
+  function paintRoad(x, y) {
+    if (!inMap(x, y)) return;
+    pix(rctx, x, y, ROAD);
+    pix(wctx, x, y, ROAD);
+  }
+
+  function roadV(cx, y0, y1, width) {
+    var half = (width - 1) / 2;
+    var y, dx;
+    for (y = y0; y <= y1; y++) {
+      for (dx = -half; dx <= half; dx++) paintRoad(cx + dx, y);
+    }
+  }
+
+  function roadH(cy, x0, x1, width) {
+    var half = (width - 1) / 2;
+    var x, dy;
+    for (x = x0; x <= x1; x++) {
+      for (dy = -half; dy <= half; dy++) paintRoad(x, cy + dy);
+    }
+  }
+
+  function roadDiag(x0, y0, deg, width) {
+    var rad = deg * Math.PI / 180;
+    var c = Math.cos(rad), s = Math.sin(rad);
+    var half = (width - 1) / 2;
+    var t, cx, cy, ox, oy;
+    for (t = 0; t < 220; t += 0.2) {
+      cx = x0 + t * c;
+      cy = y0 + t * s;
+      if (cx > MAP && cy > MAP) break;
+      for (oy = -half; oy <= half; oy++) {
+        for (ox = -half; ox <= half; ox++) {
+          paintRoad(Math.round(cx + ox), Math.round(cy + oy));
+        }
+      }
+    }
+  }
+
+  function dashV(cx, y0, y1) {
+    var y;
+    for (y = y0; y <= y1; y++) {
+      if (y % 4 < 2) pix(wctx, cx, y, LINE);
+    }
+  }
+
+  function dashH(cy, x0, x1) {
+    var x;
+    for (x = x0; x <= x1; x++) {
+      if (x % 4 < 2) pix(wctx, x, cy, LINE);
+    }
+  }
+
+  function edgeV(cx, y0, y1) {
+    var y;
+    for (y = y0; y <= y1; y++) {
+      pix(wctx, cx, y, EDGE);
+    }
+  }
+
+  function edgeH(cy, x0, x1) {
+    var x;
+    for (x = x0; x <= x1; x++) {
+      pix(wctx, x, cy, EDGE);
+    }
+  }
+
+  function drawText(str, x, y, color) {
+    var i, row, col, g;
+    for (i = 0; i < str.length; i++) {
+      g = FONT[str.charAt(i)];
+      if (!g) continue;
+      for (row = 0; row < 5; row++) {
+        for (col = 0; col < 3; col++) {
+          if (g[row].charAt(col) === "1") pix(wctx, x + i * 4 + col, y + row, color);
+        }
+      }
+    }
+  }
+
+  function drawBuilding(x, y, w, h) {
+    rect(wctx, x, y, w, 2, ROOF);
+    pix(wctx, x, y, ROOF_DK);
+    rect(wctx, x, y + 2, w, h - 2, BUILDING);
+    rect(wctx, x, y + h - 1, w, 1, BUILDING_DK);
+    var wx, wy;
+    for (wy = y + 3; wy < y + h - 1; wy += 2) {
+      for (wx = x + 1; wx < x + w - 1; wx += 2) {
+        pix(wctx, wx, wy, WINDOW);
+      }
+    }
+  }
+
+  function drawRatusz() {
+    /* 16x10 przy górze mapy, tuż na północ od Lipowej (y=13), żeby nie stał na jezdni */
+    var x = 70, y = 3, w = 16, h = 10;
+    /* wieża */
+    rect(wctx, 76, 1, 4, 5, BUILDING);
+    rect(wctx, 76, 1, 4, 2, ROOF);
+    pix(wctx, 77, 1, ROOF_DK);
+    pix(wctx, 78, 1, ROOF_DK);
+    pix(wctx, 77, 1, POLE);
+    pix(wctx, 78, 1, "#c02020");
+    /* korpus */
+    rect(wctx, x, y, w, 2, ROOF);
+    rect(wctx, x, y + 1, w, 1, ROOF_DK);
+    rect(wctx, x, y + 2, w, h - 2, BUILDING);
+    rect(wctx, x, y + h - 1, w, 1, BUILDING_DK);
+    var spots = [
+      [72, 6], [74, 6], [76, 6], [78, 6], [80, 6], [82, 6],
+      [72, 8], [74, 8], [78, 8], [80, 8], [82, 8],
+      [72, 10], [74, 10], [76, 10], [78, 10], [80, 10], [82, 10]
+    ];
+    var i;
+    for (i = 0; i < spots.length; i++) pix(wctx, spots[i][0], spots[i][1], WINDOW);
+    pix(wctx, 77, 10, "#4a3020");
+    pix(wctx, 78, 10, "#4a3020");
+    pix(wctx, 77, 11, "#4a3020");
+    pix(wctx, 78, 11, "#4a3020");
+  }
+
+  function drawTree(x, y) {
+    pix(wctx, x, y + 2, TRUNK);
+    pix(wctx, x, y, TREE);
+    pix(wctx, x - 1, y + 1, TREE);
+    pix(wctx, x, y + 1, TREE_DARK);
+    pix(wctx, x + 1, y + 1, TREE);
+    pix(wctx, x, y + 2, TREE);
+  }
+
+  function drawPond(cx, cy, r) {
+    var x, y, dx, dy;
+    for (y = cy - r - 1; y <= cy + r + 1; y++) {
+      for (x = cx - r - 1; x <= cx + r + 1; x++) {
+        dx = x - cx; dy = y - cy;
+        if (dx * dx + dy * dy <= (r + 1) * (r + 1) && dx * dx + dy * dy > r * r) {
+          pix(wctx, x, y, WATER_EDGE);
+        } else if (dx * dx + dy * dy <= r * r) {
+          pix(wctx, x, y, WATER);
+        }
+      }
+    }
+    pix(wctx, cx - 2, cy - 3, WATER_HI);
+    pix(wctx, cx - 1, cy - 2, WATER_HI);
+  }
+
+  function drawParkedCar(x, y, horiz) {
+    /* czerwony sprite z góry, 3x5 (lub 5x3) */
+    var cells, i;
+    if (horiz) {
+      cells = [
+        [0, 1, CAR_RED], [1, 0, CAR_RED], [1, 1, CAR_RED_HI], [1, 2, CAR_RED],
+        [2, 0, CAR_RED], [2, 1, CAR_RED_DK], [2, 2, CAR_RED],
+        [3, 0, CAR_RED], [3, 1, CAR_RED], [3, 2, CAR_RED],
+        [4, 1, CAR_RED]
+      ];
+    } else {
+      cells = [
+        [1, 0, CAR_RED], [0, 1, CAR_RED], [1, 1, CAR_RED_HI], [2, 1, CAR_RED],
+        [0, 2, CAR_RED], [1, 2, CAR_RED_DK], [2, 2, CAR_RED],
+        [0, 3, CAR_RED], [1, 3, CAR_RED], [2, 3, CAR_RED],
+        [1, 4, CAR_RED]
+      ];
+    }
+    for (i = 0; i < cells.length; i++) pix(wctx, x + cells[i][0], y + cells[i][1], cells[i][2]);
+  }
+
+  function drawLamp(x, y) {
+    pix(wctx, x, y, LAMP);
+    pix(wctx, x, y + 1, POLE);
+    pix(wctx, x, y + 2, POLE);
+  }
+
+  function drawRails() {
+    var x, y;
+    for (y = 20; y <= 150; y++) {
+      for (x = 8; x <= 16; x++) {
+        if (y % 3 === 0) pix(wctx, x, y, RAIL_TIE);
+        else pix(wctx, x, y, RAIL_DARK);
+      }
+      pix(wctx, 10, y, RAIL);
+      pix(wctx, 14, y, RAIL);
+    }
+  }
+
+  function buildMap() {
+    var x, y, grass;
+    rctx.fillStyle = "#000000";
+    rctx.fillRect(0, 0, MAP, MAP);
+
+    /* trawa w kratkę 2x2 */
+    for (y = 0; y < MAP; y++) {
+      for (x = 0; x < MAP; x++) {
+        grass = ((x >> 1) + (y >> 1)) % 2 === 0 ? GRASS_A : GRASS_B;
+        pix(wctx, x, y, grass);
+      }
+    }
+
+    /* park / zieleń */
+    for (y = 95; y <= 150; y++) {
+      for (x = 78; x <= 150; x++) {
+        grass = ((x >> 1) + (y >> 1)) % 2 === 0 ? PARK_A : PARK_B;
+        pix(wctx, x, y, grass);
+      }
+    }
+
+    /* drogi: szerokość 5 (środek ±2) */
+    roadV(40, 1, 158, 5);                 /* Kopernika */
+    roadH(75, 1, 158, 5);                 /* Zwierzyniecka */
+    roadH(110, 1, 158, 5);                /* Kawaleryjska */
+    roadH(25, 1, 158, 5);                 /* Poleska */
+    roadH(15, 1, 158, 5);                 /* Lipowa */
+    roadDiag(40, 110, 26, 7);             /* Ciołkowskiego ~26° w dół-prawo */
+
+    /* krawędzie i linia środkowa (tylko warstwa wizualna) */
+    edgeV(38, 1, 158);
+    edgeV(42, 1, 158);
+    dashV(40, 1, 158);
+    edgeH(13, 1, 158); edgeH(17, 1, 158);
+    dashH(15, 1, 158);
+    edgeH(23, 1, 158); edgeH(27, 1, 158);
+    dashH(25, 1, 158);
+    edgeH(73, 1, 158); edgeH(77, 1, 158);
+    dashH(75, 1, 158);
+    edgeH(108, 1, 158); edgeH(112, 1, 158);
+    dashH(110, 1, 158);
+
+    drawRails();
+
+    drawPond(132, 136, 8);
+    var trees = [
+      [82, 98], [90, 100], [98, 97], [110, 99], [122, 98], [140, 100], [148, 97],
+      [80, 118], [88, 126], [96, 132], [84, 140], [92, 146],
+      [108, 124], [118, 118], [124, 148], [140, 128], [146, 140],
+      [150, 120], [150, 146], [102, 146], [78, 132], [114, 142]
+    ];
+    for (y = 0; y < trees.length; y++) drawTree(trees[y][0], trees[y][1]);
+
+    drawBuilding(20, 32, 14, 9);
+    drawBuilding(22, 50, 12, 8);
+    drawBuilding(20, 62, 14, 8);
+    drawBuilding(18, 82, 14, 10);
+    drawBuilding(22, 96, 12, 9);
+    drawBuilding(48, 30, 14, 8);
+    drawBuilding(48, 52, 16, 10);
+    drawBuilding(48, 64, 16, 8);
+    drawBuilding(70, 64, 16, 8);
+    drawBuilding(18, 64, 16, 8);
+    drawBuilding(48, 86, 14, 10);
+
+    drawRatusz();
+
+    var lamps = [34, 48, 62, 82, 96, 120, 134, 148];
+    for (y = 0; y < lamps.length; y++) {
+      drawLamp(36, lamps[y]);
+      drawLamp(44, lamps[y]);
+    }
+
+    drawParkedCar(33, 80, false);
+    drawParkedCar(33, 100, false);
+
+    drawText("LIPOWA", 44, 8, TEXT);
+    drawText("POLESKA", 46, 18, TEXT);
+    drawText("KOPERNIKA", 47, 44, TEXT);
+    drawText("ZWIERZYNIECKA", 47, 79, TEXT);
+    drawText("KAWALERYJSKA", 45, 103, TEXT);
+    drawText("CIOŁKOWSKIEGO", 85, 118, TEXT);
+    drawText("RATUSZ", 88, 3, TEXT);
+
+    /* ramka */
+    rect(wctx, 0, 0, MAP, 1, FRAME);
+    rect(wctx, 0, MAP - 1, MAP, 1, FRAME);
+    rect(wctx, 0, 0, 1, MAP, FRAME);
+    rect(wctx, MAP - 1, 0, 1, MAP, FRAME);
+  }
+
+  function isRoadCell(x, y) {
+    x = x | 0;
+    y = y | 0;
+    if (x < 0 || y < 0 || x >= MAP || y >= MAP) return false;
+    var d = rctx.getImageData(x, y, 1, 1).data;
+    return d[0] === ROAD_RGB[0] && d[1] === ROAD_RGB[1] && d[2] === ROAD_RGB[2];
+  }
+
+  /* hitbox 3x3 pod autem */
+  function canMoveTo(nx, ny) {
+    var dx, dy;
+    for (dy = -1; dy <= 1; dy++) {
+      for (dx = -1; dx <= 1; dx++) {
+        if (!isRoadCell(nx + dx, ny + dy)) return false;
+      }
+    }
+    return true;
+  }
+
+  var car = { x: 40, y: 90, dir: "up" };
+  var camX = 0, camY = 0;
+  var held = { up: false, down: false, left: false, right: false };
+  var lastDir = null;
+  var acc = 0;
+  var lastTs = 0;
+
+  function currentDir() {
+    if (lastDir && held[lastDir]) return lastDir;
+    if (held.up) return "up";
+    if (held.down) return "down";
+    if (held.left) return "left";
+    if (held.right) return "right";
+    return null;
+  }
+
+  function step() {
+    var dir = currentDir();
+    if (!dir) return;
+    var nx = car.x, ny = car.y;
+    if (dir === "up") ny -= 1;
+    else if (dir === "down") ny += 1;
+    else if (dir === "left") nx -= 1;
+    else if (dir === "right") nx += 1;
+    if (canMoveTo(nx, ny)) {
+      car.x = nx;
+      car.y = ny;
+      car.dir = dir;
+    }
+  }
+
+  function updateCam() {
+    camX = car.x - (VIEW / 2);
+    camY = car.y - (VIEW / 2);
+    if (camX < 0) camX = 0;
+    if (camY < 0) camY = 0;
+    if (camX > MAP - VIEW) camX = MAP - VIEW;
+    if (camY > MAP - VIEW) camY = MAP - VIEW;
+  }
+
+  function drawPlayer() {
+    var sx = (car.x - camX) * SCALE;
+    var sy = (car.y - camY) * SCALE;
+    var s = SCALE;
+    var body = "#1a58c8";
+    var hi = "#4a8af0";
+    var win = "#141c28";
+    var light = "#e8d848";
+    ctx.fillStyle = body;
+    /* 3x5 sprite, środek na pozycji auta, skalowany do ekranu */
+    function cell(ix, iy, color) {
+      ctx.fillStyle = color;
+      ctx.fillRect(sx + (ix - 1) * s, sy + (iy - 2) * s, s, s);
+    }
+    var d = car.dir;
+    if (d === "up") {
+      cell(1, 0, light); cell(0, 1, body); cell(1, 1, hi); cell(2, 1, body);
+      cell(0, 2, body); cell(1, 2, win); cell(2, 2, body);
+      cell(0, 3, body); cell(1, 3, body); cell(2, 3, body);
+      cell(0, 4, body); cell(2, 4, body);
+    } else if (d === "down") {
+      cell(0, 0, body); cell(2, 0, body);
+      cell(0, 1, body); cell(1, 1, body); cell(2, 1, body);
+      cell(0, 2, body); cell(1, 2, win); cell(2, 2, body);
+      cell(0, 3, body); cell(1, 3, hi); cell(2, 3, body);
+      cell(1, 4, light);
+    } else if (d === "left") {
+      /* 5x3, środek nadal (car.x, car.y) — komórki przesunięte w osi X */
+      function cellH(ix, iy, color) {
+        ctx.fillStyle = color;
+        ctx.fillRect(sx + (ix - 2) * s, sy + (iy - 1) * s, s, s);
+      }
+      cellH(0, 1, light);
+      cellH(1, 0, body); cellH(1, 1, hi); cellH(1, 2, body);
+      cellH(2, 0, body); cellH(2, 1, win); cellH(2, 2, body);
+      cellH(3, 0, body); cellH(3, 1, body); cellH(3, 2, body);
+      cellH(4, 0, body); cellH(4, 2, body);
+    } else {
+      function cellR(ix, iy, color) {
+        ctx.fillStyle = color;
+        ctx.fillRect(sx + (ix - 2) * s, sy + (iy - 1) * s, s, s);
+      }
+      cellR(0, 0, body); cellR(0, 2, body);
+      cellR(1, 0, body); cellR(1, 1, body); cellR(1, 2, body);
+      cellR(2, 0, body); cellR(2, 1, win); cellR(2, 2, body);
+      cellR(3, 0, body); cellR(3, 1, hi); cellR(3, 2, body);
+      cellR(4, 1, light);
+    }
+  }
+
+  function render() {
+    updateCam();
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, 640, 640);
+    ctx.drawImage(world, camX, camY, VIEW, VIEW, 0, 0, 640, 640);
+    drawPlayer();
+  }
+
+  function tick(ts) {
+    if (!lastTs) lastTs = ts;
+    acc += ts - lastTs;
+    lastTs = ts;
+    while (acc >= STEP_MS) {
+      step();
+      acc -= STEP_MS;
+    }
+    render();
+    requestAnimationFrame(tick);
+  }
+
+  var keyMap = {
+    ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right"
+  };
+
+  window.addEventListener("keydown", function (e) {
+    var d = keyMap[e.key];
+    if (!d) return;
+    e.preventDefault();
+    if (!held[d]) {
+      held[d] = true;
+      lastDir = d;
+      step();
+      acc = 0;
+    }
+  });
+
+  window.addEventListener("keyup", function (e) {
+    var d = keyMap[e.key];
+    if (!d) return;
+    e.preventDefault();
+    held[d] = false;
+  });
+
+  function bindPad() {
+    var btns = document.querySelectorAll("#pad button");
+    function set(dir, on, btn) {
+      held[dir] = on;
+      if (on) {
+        lastDir = dir;
+        step();
+        acc = 0;
+        btn.classList.add("held");
+      } else {
+        btn.classList.remove("held");
+      }
+    }
+    btns.forEach(function (btn) {
+      var dir = btn.getAttribute("data-dir");
+      btn.addEventListener("pointerdown", function (e) {
+        e.preventDefault();
+        btn.setPointerCapture(e.pointerId);
+        set(dir, true, btn);
+      });
+      btn.addEventListener("pointerup", function (e) {
+        e.preventDefault();
+        set(dir, false, btn);
+      });
+      btn.addEventListener("pointercancel", function () { set(dir, false, btn); });
+      btn.addEventListener("lostpointercapture", function () { set(dir, false, btn); });
+      btn.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+    });
+  }
+
+  window.__mapaDebug = {
+    stan: function () { return { x: car.x, y: car.y, dir: car.dir, camX: camX, camY: camY }; },
+    isRoad: isRoadCell,
+    canMoveTo: canMoveTo,
+    world: world
+  };
+
+  buildMap();
+  bindPad();
+  updateCam();
+  render();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
